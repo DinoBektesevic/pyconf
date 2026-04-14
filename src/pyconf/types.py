@@ -1,12 +1,7 @@
 """Typed configuration field descriptors.
 
-Each class in this module is a `ConfigField` subclass that validates a
-specific type or set of allowed values. Assign instances as class-level
-attributes on a `Config` subclass to declare typed, documented fields.
-
-All field types inherit the lazy-default behaviour from `ConfigField`:
-passing a callable as ``default_value`` defers evaluation to access time,
-enabling defaults that depend on sibling fields.
+Each class in this module implements a `ConfigField` specializations and their
+validators; for practical reasons.
 """
 
 from .config_field import ConfigField

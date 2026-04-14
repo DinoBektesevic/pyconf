@@ -19,11 +19,11 @@ class ConfigMeta(type):
     Two composition modes are supported, selected via the ``method`` keyword
     on the class definition:
 
-    ``"unroll"`` (default)
+    ``"unroll"``
         Fields from all ``components`` and base classes are merged into one
         flat namespace on the new class. Later entries override earlier ones.
 
-    ``"nested"``
+    ``"nested"`` (default)
         Each component is instantiated as a sub-object and stored under its
         ``shortname`` attribute. The parent class itself holds no flat fields
         from the components.
@@ -90,7 +90,7 @@ class ConfigMeta(type):
     def __new__(cls, cls_name, bases, attrs, **kwargs):
         cls_fields = {k: v for k, v in attrs.items() if isinstance(v, ConfigField)}
         components = kwargs.pop("components", None)
-        method = kwargs.pop("method", "unroll")
+        method = kwargs.pop("method", "nested")
 
         if "nest" in method:
             nested = cls._nest_configs(components)
