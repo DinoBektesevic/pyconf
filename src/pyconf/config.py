@@ -5,6 +5,10 @@ fields at class-definition time, and `Config`, the base class that all
 user-defined configuration classes inherit from.
 """
 
+import warnings
+import datetime
+import pathlib
+
 from .config_field import ConfigField
 
 
@@ -25,7 +29,7 @@ class ConfigMeta(type):
 
     ``"nested"`` (default)
         Each component is instantiated as a sub-object and stored under its
-        ``shortname`` attribute. The parent class itself holds no flat fields
+        ``confid`` attribute. The parent class itself holds no flat fields
         from the components.
 
     Parameters
@@ -67,7 +71,7 @@ class ConfigMeta(type):
 
     @staticmethod
     def _nest_configs(components):
-        """Instantiate component configs and key them by ``shortname``.
+        """Instantiate component configs and key them by ``confid``.
 
         Parameters
         ----------
@@ -77,25 +81,33 @@ class ConfigMeta(type):
         Returns
         -------
         `dict`
-            Mapping of ``shortname`` to instantiated `Config` object.
+            Mapping of ``confid`` to instantiated `Config` object.
         """
         nested = {}
         if components is None:
             return nested
         for comp in reversed(components):
             instance = comp()
-            nested[instance.shortname] = instance
+            nested[instance.confid] = instance
         return nested
 
     def __new__(cls, cls_name, bases, attrs, **kwargs):
         cls_fields = {k: v for k, v in attrs.items() if isinstance(v, ConfigField)}
         components = kwargs.pop("components", None)
-        method = kwargs.pop("method", "nested")
+        method = kwargs.pop("method", "nested" if components is not None else "unroll")
+        if "confid" not in attrs:
+            attrs["confid"] = cls_name.lower()
 
         if "nest" in method:
-            nested = cls._nest_configs(components)
+            # Store component *classes* keyed by confid; instances are created
+            # fresh in Config.__init__ so each parent instance gets its own
+            # sub-configs rather than sharing class-level objects.
+            nested_classes = {}
+            if components is not None:
+                for comp in reversed(components):
+                    nested_classes[comp.confid] = comp
+            attrs["_nested_classes"] = nested_classes
             attrs["defaults"] = {}
-            attrs.update(nested)
         else:
             config = cls._unroll_defaults(bases)
             config.update(cls._unroll_defaults(components))
@@ -120,33 +132,53 @@ class Config(metaclass=ConfigMeta):
         Initial field values passed as keyword arguments. Each keyword must
         match a declared field name and is validated on assignment.
 
+    Attributes
+    ----------
+    confid : `str`
+        Identifier for this config class. Used as the dict key in nested
+        serialization and as the attribute name under which this config is
+        accessible on a parent config in nested composition mode.
+        Defaults to the lowercased class name when not explicitly set, so
+        ``class SearchConfig(Config)`` gets ``confid = "searchconfig"``
+        automatically.
+
     Examples
     --------
     >>> from pyconf import Config, Float, Options
-    >>> class SearchConfig(Config):
-    ...     shortname = "search"
-    ...     n_sigma = Float(5.0, "Detection threshold in sigma", minval=0.0)
-    ...     method = Options(("DBSCAN", "RANSAC"), "Clustering algorithm")
-    >>> cfg = SearchConfig()
-    >>> cfg.n_sigma
+    >>> class BaseConfig(Config):
+    ...     confid  = "base"
+    ...     field1  = Float(5.0, "A float field", minval=0.0)
+    ...     field2  = Options(("opt_a", "opt_b"), "An options field")
+    >>> cfg = BaseConfig()
+    >>> cfg.field1
     5.0
-    >>> cfg.n_sigma = 3.0
-    >>> cfg["method"] = "RANSAC"
+    >>> cfg.field1 = 3.0
+    >>> cfg["field2"] = "opt_b"
     >>> print(cfg)  # doctest: +SKIP
-    SearchConfig
-    --------+-------+------------------------
-    Key     | Value | Description
-    --------+-------+------------------------
-    n_sigma | 3.0   | Detection threshold ...
-    method  | RANSAC| Clustering algorithm
+    BaseConfig:
+    Key    | Value | Description
+    -------+-------+----------------
+    field1 | 3.0   | A float field
+    field2 | opt_b | An options field
     """
 
-    shortname = "conf"
+    confid: str
+    """Name of this config class when it's used as a component config.
+    Automatically set as the lowercase version of the class name.
+    """
 
     def __init__(self, **kwargs):
+        # Nested mode: instantiate each component class fresh so that different
+        # parent instances do not share the same sub-config objects.
+        for confid, sub_cls in getattr(type(self), "_nested_classes", {}).items():
+            object.__setattr__(self, confid, sub_cls())
+        # Flat/unroll/inherited mode: initialize stored values for non-static,
+        # non-callable fields. Callable defaults are left unset so that
+        # ConfigField.__get__ can evaluate them lazily on first access.
         for k, v in self.defaults.items():
             if not isinstance(v, Config) and not getattr(type(self), k).static:
-                setattr(self, k, v.defaultval if not callable(v.defaultval) else v.defaultval)
+                if not callable(v.defaultval):
+                    setattr(self, k, v.defaultval)
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -272,13 +304,13 @@ class Config(metaclass=ConfigMeta):
 
         Examples
         --------
-        >>> class SearchConfig(Config):
-        ...     n_sigma = Float(5.0, "threshold")
-        ...     method = Options(("DBSCAN", "RANSAC"), "algorithm")
+        >>> class BandConfig(Config):
+        ...     low  = Float(1.0, "Lower bound", minval=0.0)
+        ...     high = Float(2.0, "Upper bound", minval=0.0)
         ...
         ...     def validate(self):
-        ...         if self.method == "RANSAC" and self.n_sigma > 10:
-        ...             raise ValueError("RANSAC requires n_sigma <= 10")
+        ...         if self.high <= self.low:
+        ...             raise ValueError("high must be greater than low")
         """
 
     def freeze(self):
@@ -334,12 +366,23 @@ class Config(metaclass=ConfigMeta):
 
         Examples
         --------
-        >>> base = SearchConfig()
-        >>> fast = base.copy(n_sigma=3.0, method="RANSAC")
+        >>> base = BaseConfig()
+        >>> modified = base.copy(field1="new", field2=9.9)
         """
         new = self.__class__.__new__(self.__class__)
-        for k, v in self.items():
-            setattr(new, k, v)
+        # Initialize nested sub-configs on the new instance first.
+        for confid, sub_cls in getattr(type(self), "_nested_classes", {}).items():
+            object.__setattr__(new, confid, getattr(self, confid).copy())
+        for k in self.keys():
+            descriptor = getattr(type(self), k)
+            if descriptor.static:
+                continue
+            # Only copy fields that have an explicitly stored value in __dict__.
+            # Fields absent from __dict__ have a callable default; skipping them
+            # lets the copy inherit the descriptor's factory and recompute lazily
+            # from the copy's own field values rather than baking in a snapshot.
+            if descriptor.private_name in self.__dict__:
+                setattr(new, k, self.__dict__[descriptor.private_name])
         for k, v in overrides.items():
             setattr(new, k, v)
         return new
@@ -380,12 +423,72 @@ class Config(metaclass=ConfigMeta):
         -------
         `dict`
             Mapping of field names to their current values. Nested `Config`
-            sub-objects are serialized recursively.
+            sub-objects are serialized recursively. `pathlib.Path` values are
+            serialized as strings so the result is always JSON/YAML/TOML-safe.
+
+        Warns
+        -----
+        UserWarning
+            If any field has a callable default and no explicitly stored value.
+            The serialized value is a computed snapshot; the formula is lost
+            after deserialization.
         """
+        # Nested composition mode: iterate sub-configs by confid.
+        nested_classes = getattr(type(self), "_nested_classes", {})
+        if nested_classes:
+            return {
+                confid: getattr(self, confid).to_dict()
+                for confid in nested_classes
+            }
+
         result = {}
-        for k, v in self.items():
-            result[k] = v.to_dict() if isinstance(v, Config) else v
+        for k in self.keys():
+            descriptor = getattr(type(self), k)
+            # Warn when serializing a callable-default field that has no stored
+            # value in __dict__. The round-tripped config will have a plain value
+            # instead of the original formula — accessing __dict__ directly is the
+            # only reliable way to distinguish "user set this" from "computed lazily".
+            if callable(descriptor.defaultval) and descriptor.private_name not in self.__dict__:
+                warnings.warn(
+                    f"Field {k!r} has a callable default and no stored value. "
+                    f"The serialized value is a snapshot; the formula will not "
+                    f"survive deserialization.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            v = getattr(self, k)
+            result[k] = self._serialize_value(v)
         return result
+
+    @staticmethod
+    def _serialize_value(v):
+        """Convert a field value to a plain, serializer-safe Python object.
+
+        YAML and TOML serializers cannot handle Python-specific types like
+        pathlib.Path, set, frozenset, or tuple natively. We normalize them
+        here so that yaml.dump / tomli_w.dumps always receive plain types.
+        The reverse coercion (list->tuple, list->set, str->Path) is handled
+        by each field's __set__ when from_dict / from_yaml / from_toml
+        loads the data back.
+        """
+        if isinstance(v, Config):
+            return v.to_dict()
+        if isinstance(v, pathlib.Path):
+            # PosixPath / WindowsPath are not YAML/TOML serializable.
+            return str(v)
+        if isinstance(v, (set, frozenset)):
+            # yaml.dump uses !!set (not safe_load-readable); TOML has no set type.
+            # Sorting gives deterministic output; MultiOptions.__set__ coerces back.
+            return sorted(v, key=str)
+        if isinstance(v, tuple):
+            # yaml.dump uses !!python/tuple (not safe_load-readable).
+            # Range.__set__ coerces list → tuple on the way back in.
+            return list(v)
+        if isinstance(v, datetime.time) and not isinstance(v, datetime.datetime):
+            # datetime.time has no native YAML safe representation.
+            # Serialize as ISO string; Time.__set__ coerces str back to time.
+            return v.isoformat()
+        return v
 
     @classmethod
     def from_dict(cls, mapping, strict=True):
@@ -412,13 +515,24 @@ class Config(metaclass=ConfigMeta):
             If ``strict`` is `True` and ``mapping`` contains an undeclared
             field name.
         """
+        # Nested composition mode: route each sub-dict to its component class.
+        nested_classes = getattr(cls, "_nested_classes", {})
+        if nested_classes:
+            instance = cls.__new__(cls)
+            for confid, sub_cls in nested_classes.items():
+                sub_dict = mapping.get(confid, {})
+                object.__setattr__(instance, confid, sub_cls.from_dict(sub_dict, strict=strict))
+            instance.validate()
+            return instance
+
         instance = cls.__new__(cls)
         for k, v in mapping.items():
             if k not in instance.defaults:
                 if strict:
                     raise KeyError(f"Unknown field {k!r} for {cls.__name__!r}")
                 continue
-            setattr(instance, k, v)
+            if not getattr(cls, k).static:
+                setattr(instance, k, v)
         instance.validate()
         return instance
 
@@ -492,7 +606,20 @@ class Config(metaclass=ConfigMeta):
                 "TOML write support requires tomli-w. "
                 "Install it with: pip install tomli-w"
             )
-        return tomli_w.dumps(self.to_dict())
+        # TOML has no null type. Strip None values so tomli_w doesn't raise.
+        # Fields with None values will be absent from the TOML output and will
+        # fall back to their class-level default when loaded — which is correct
+        # for fields like Seed(None, ...) where None is the intended default.
+        return tomli_w.dumps(self._strip_none(self.to_dict()))
+
+    @staticmethod
+    def _strip_none(d):
+        """Recursively remove None values from a dict for TOML compatibility."""
+        return {
+            k: (Config._strip_none(v) if isinstance(v, dict) else v)
+            for k, v in d.items()
+            if v is not None
+        }
 
     @classmethod
     def from_toml(cls, text, strict=True):
@@ -529,25 +656,65 @@ class Config(metaclass=ConfigMeta):
         return cls.from_dict(tomllib.loads(text), strict=strict)
 
     @staticmethod
-    def _make_table(rows):
+    def _make_table(rows, max_key_width=20, max_value_width=25, max_desc_width=50):
         """Format rows as a plain-text table with three columns.
+
+        Long cell values are wrapped at word boundaries so that no column
+        exceeds its maximum width. Multi-line rows are padded consistently.
 
         Parameters
         ----------
         rows : `list` of `tuple`
             Each tuple is ``(key, value, description)``.
+        max_key_width : `int`, optional
+            Maximum width for the Key column. Default is 20.
+        max_value_width : `int`, optional
+            Maximum width for the Value column. Default is 25.
+        max_desc_width : `int`, optional
+            Maximum width for the Description column. Default is 50.
 
         Returns
         -------
         `str`
             A fixed-width table string.
         """
+        import textwrap
+
         header = ("Key", "Value", "Description")
-        all_rows = [header] + list(rows)
-        widths = [max(len(str(r[i])) for r in all_rows) for i in range(3)]
+        max_widths = (max_key_width, max_value_width, max_desc_width)
+
+        def wrap_cell(text, max_w):
+            """Wrap text to at most max_w chars, breaking at spaces."""
+            lines = textwrap.wrap(str(text), max_w)
+            return lines if lines else [""]
+
+        def wrap_row(row):
+            return [wrap_cell(str(row[i]), max_widths[i]) for i in range(3)]
+
+        wrapped_header = wrap_row(header)
+        wrapped_rows = [wrap_row(r) for r in rows]
+        all_wrapped = [wrapped_header] + wrapped_rows
+
+        # Actual column widths from the widest wrapped line in each column.
+        widths = [
+            max(len(line) for wr in all_wrapped for line in wr[i])
+            for i in range(3)
+        ]
+
         sep = "-+-".join("-" * w for w in widths)
-        fmt = lambda r: " | ".join(str(r[i]).ljust(widths[i]) for i in range(3))
-        lines = [fmt(header), sep] + [fmt(r) for r in rows]
+
+        def fmt_row(wrapped_cells):
+            n = max(len(c) for c in wrapped_cells)
+            out = []
+            for i in range(n):
+                parts = [
+                    (wrapped_cells[col][i] if i < len(wrapped_cells[col]) else "").ljust(widths[col])
+                    for col in range(3)
+                ]
+                out.append(" | ".join(parts))
+            return "\n".join(out)
+
+        lines = [fmt_row(wrapped_header), sep] + [fmt_row(wr) for wr in wrapped_rows]
         return "\n".join(lines)
 
     def _table_rows(self):
@@ -564,14 +731,25 @@ class Config(metaclass=ConfigMeta):
         ]
 
     def __str__(self):
-        rows = self._table_rows()
+        nested_classes = getattr(type(self), "_nested_classes", {})
         header = f"{self.__class__.__name__}:"
         if self.__class__.__doc__:
             header += f"\n{self.__class__.__doc__.strip()}"
-        return header + "\n" + self._make_table(rows)
+        if nested_classes:
+            sub_tables = "\n\n".join(
+                f"[{confid}]\n{getattr(self, confid)}" for confid in nested_classes
+            )
+            return header + "\n" + sub_tables
+        return header + "\n" + self._make_table(self._table_rows())
 
     def __repr__(self):
-        pairs = ", ".join(f"{k}={getattr(self, k)!r}" for k in self.keys())
+        nested_classes = getattr(type(self), "_nested_classes", {})
+        if nested_classes:
+            pairs = ", ".join(
+                f"{confid}={getattr(self, confid)!r}" for confid in nested_classes
+            )
+        else:
+            pairs = ", ".join(f"{k}={getattr(self, k)!r}" for k in self.keys())
         return f"{self.__class__.__name__}({pairs})"
 
     def _repr_html_(self):
@@ -583,14 +761,20 @@ class Config(metaclass=ConfigMeta):
             HTML string containing a styled table of field names, values,
             and descriptions.
         """
+        title = self.__class__.__name__
+        doc = f"<p>{self.__class__.__doc__.strip()}</p>" if self.__class__.__doc__ else ""
+        nested_classes = getattr(type(self), "_nested_classes", {})
+        if nested_classes:
+            sub_html = "".join(
+                getattr(self, confid)._repr_html_() for confid in nested_classes
+            )
+            return f"<b>{title}</b>{doc}{sub_html}"
         rows_html = "".join(
             f"<tr><td><code>{k}</code></td>"
             f"<td><code>{getattr(self, k)!r}</code></td>"
             f"<td>{getattr(type(self), k).doc}</td></tr>"
             for k in self.keys()
         )
-        title = self.__class__.__name__
-        doc = f"<p>{self.__class__.__doc__.strip()}</p>" if self.__class__.__doc__ else ""
         return (
             f"<b>{title}</b>{doc}"
             f"<table>"

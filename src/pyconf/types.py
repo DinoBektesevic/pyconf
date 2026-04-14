@@ -4,8 +4,11 @@ Each class in this module implements a `ConfigField` specializations and their
 validators; for practical reasons.
 """
 
-from .config_field import ConfigField
+import datetime
 import numbers
+import pathlib
+
+from .config_field import ConfigField
 
 
 __all__ = [
@@ -73,16 +76,16 @@ class Options(ConfigField):
     Examples
     --------
     >>> from pyconf import Config, Options
-    >>> class AlgoConfig(Config):
-    ...     method = Options(("DBSCAN", "RANSAC"), "Clustering algorithm")
-    >>> cfg = AlgoConfig()
-    >>> cfg.method
-    'DBSCAN'
-    >>> cfg.method = "RANSAC"
-    >>> cfg.method = "BANANA"
+    >>> class BaseConfig(Config):
+    ...     mode = Options(("fast", "balanced", "thorough"), "Processing mode")
+    >>> cfg = BaseConfig()
+    >>> cfg.mode
+    'fast'
+    >>> cfg.mode = "thorough"
+    >>> cfg.mode = "turbo"
     Traceback (most recent call last):
         ...
-    ValueError: Expected 'BANANA' to be one of ('DBSCAN', 'RANSAC')
+    ValueError: Expected 'turbo' to be one of ('fast', 'balanced', 'thorough')
     """
 
     def __init__(self, options, doc, default_value=None, static=False):
@@ -133,6 +136,13 @@ class MultiOptions(ConfigField):
         defaultval = set() if default_value is None else default_value
         super().__init__(defaultval, doc, static)
 
+    def __set__(self, obj, value):
+        # Coerce list to set so that a round-trip through YAML/TOML (which
+        # deserializes sequences as lists) does not fail validation.
+        if isinstance(value, list):
+            value = set(value)
+        super().__set__(obj, value)
+
     def validate(self, value):
         if not isinstance(value, (set, frozenset)):
             raise TypeError(f"Expected a set, got {type(value).__name__!r}")
@@ -173,7 +183,13 @@ class String(ConfigField):
     """
 
     def __init__(
-        self, default_value, doc, minsize=0, maxsize=None, predicate=None, static=False
+        self,
+        default_value,
+        doc,
+        minsize=0,
+        maxsize=None,
+        predicate=None,
+        static=False
     ):
         self.minsize = minsize
         self.maxsize = maxsize
@@ -225,7 +241,14 @@ class Scalar(ConfigField):
         If the value is outside [``minval``, ``maxval``].
     """
 
-    def __init__(self, default_value, doc, minval=None, maxval=None, static=False):
+    def __init__(
+            self,
+            default_value,
+            doc,
+            minval=None,
+            maxval=None,
+            static=False
+    ):
         self.minval = minval
         self.maxval = maxval
         super().__init__(default_value, doc, static)
@@ -264,7 +287,14 @@ class Int(ConfigField):
         If the value is outside [``minval``, ``maxval``].
     """
 
-    def __init__(self, default_value, doc, minval=None, maxval=None, static=False):
+    def __init__(
+            self,
+            default_value,
+            doc,
+            minval=None,
+            maxval=None,
+            static=False
+    ):
         self.minval = minval
         self.maxval = maxval
         super().__init__(default_value, doc, static)
@@ -303,7 +333,14 @@ class Float(ConfigField):
         If the value is outside [``minval``, ``maxval``].
     """
 
-    def __init__(self, default_value, doc, minval=None, maxval=None, static=False):
+    def __init__(
+            self,
+            default_value,
+            doc,
+            minval=None,
+            maxval=None,
+            static=False
+    ):
         self.minval = minval
         self.maxval = maxval
         super().__init__(default_value, doc, static)
@@ -369,12 +406,21 @@ class Path(ConfigField):
         If ``must_exist`` is `True` and the path does not exist.
     """
 
-    def __init__(self, default_value, doc, must_exist=False, static=False):
+    def __init__(
+            self,
+            default_value,
+            doc,
+            must_exist=False,
+            static=False
+    ):
         self.must_exist = must_exist
         super().__init__(default_value, doc, static)
 
     def __set__(self, obj, value):
-        import pathlib
+        # Re-check static here because we bypass super().__set__ (which carries
+        # the static guard) in order to coerce the value before storing.
+        if self.static:
+            raise AttributeError("Cannot set a static config field.")
         try:
             value = pathlib.Path(value)
         except TypeError:
@@ -383,7 +429,6 @@ class Path(ConfigField):
         setattr(obj, self.private_name, value)
 
     def validate(self, value):
-        import pathlib
         if not isinstance(value, pathlib.Path):
             return
         if self.must_exist and not value.exists():
@@ -446,6 +491,13 @@ class Range(ConfigField):
     ValueError
         If ``min >= max``.
     """
+
+    def __set__(self, obj, value):
+        # Coerce list to tuple so that a round-trip through YAML/TOML (which
+        # deserializes sequences as lists) does not change the stored type.
+        if isinstance(value, list):
+            value = tuple(value)
+        super().__set__(obj, value)
 
     def validate(self, value):
         try:
@@ -569,7 +621,6 @@ class Date(ConfigField):
     """
 
     def validate(self, value):
-        import datetime
         if not isinstance(value, datetime.date):
             raise TypeError(f"Expected a datetime.date, got {type(value).__name__!r}")
 
@@ -593,8 +644,15 @@ class Time(ConfigField):
         If the value is not a `datetime.time`.
     """
 
+    def __set__(self, obj, value):
+        # Coerce ISO-format string to datetime.time so that round-trips through
+        # to_dict/from_dict work: datetime.time has no native YAML safe
+        # representation, so _serialize_value emits an ISO string instead.
+        if isinstance(value, str):
+            value = datetime.time.fromisoformat(value)
+        super().__set__(obj, value)
+
     def validate(self, value):
-        import datetime
         if not isinstance(value, datetime.time):
             raise TypeError(f"Expected a datetime.time, got {type(value).__name__!r}")
 
@@ -620,7 +678,6 @@ class DateTime(ConfigField):
     """
 
     def validate(self, value):
-        import datetime
         if not isinstance(value, datetime.datetime):
             raise TypeError(
                 f"Expected a datetime.datetime, got {type(value).__name__!r}"

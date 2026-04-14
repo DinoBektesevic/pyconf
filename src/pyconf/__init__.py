@@ -7,7 +7,7 @@ on the class that uses them, using Python descriptors::
 
     class SearchConfig(Config):
         \"\"\"Configuration for the main search algorithm.\"\"\"
-        shortname = "search"
+        confid = "search"
 
         n_sigma = Float(5.0, "Detection threshold in sigma units", minval=0.0)
         method  = Options(("DBSCAN", "RANSAC"), "Clustering algorithm")
