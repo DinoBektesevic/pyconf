@@ -79,7 +79,7 @@ instance, accessible as an attribute named after its ``confid``::
 
     cfg = PipelineConfig()
     cfg.processing.iterations = 200
-    cfg.format.precision      = 3
+    cfg.format.precision = 3
 
     print(cfg.processing)   # full table for ProcessingConfig
     print(cfg.format)       # full table for FormatConfig

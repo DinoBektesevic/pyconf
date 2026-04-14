@@ -75,8 +75,8 @@ fields are readable on instances but raise ``AttributeError`` on any attempt
 to set them::
 
     class RunConfig(Config):
-        schema_rev = Int(2,      "Config schema revision", static=True)
-        timeout    = Float(30.0, "Request timeout in seconds")
+        schema_rev = Int(2, "Config schema revision", static=True)
+        timeout = Float(30.0, "Request timeout in seconds")
 
     cfg = RunConfig()
     cfg.schema_rev        # 2
@@ -98,7 +98,7 @@ multiple fields.  The base implementation does nothing.  It is called
 automatically after every deserialization::
 
     class BandConfig(Config):
-        low  = Float(1.0, "Lower frequency bound", minval=0.0)
+        low = Float(1.0, "Lower frequency bound", minval=0.0)
         high = Float(2.0, "Upper frequency bound", minval=0.0)
 
         def validate(self):
@@ -149,9 +149,9 @@ domain-specific.  A custom field handles this naturally::
 
 
     class SurveyConfig(Config):
-        heading = Angle(0.0,  "Survey heading in degrees")
+        heading = Angle(0.0, "Survey heading in degrees")
         bearing = Angle(45.0, "Bearing to target in degrees")
-        radius  = Float(10.0, "Search radius in meters", minval=0.0)
+        radius = Float(10.0, "Search radius in meters", minval=0.0)
 
     cfg = SurveyConfig()
     cfg.heading = 370.0
@@ -175,7 +175,7 @@ receives the live config instance and is evaluated on every read where no
 explicit value has been stored::
 
     class RetryConfig(Config):
-        base_interval  = Float(1.0,  "Base interval in seconds", minval=0.0)
+        base_interval = Float(1.0, "Base interval in seconds", minval=0.0)
         retry_interval = Float(
             lambda self: self.base_interval * 3,
             "Retry interval; defaults to 3× base until overridden"

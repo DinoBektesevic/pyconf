@@ -19,8 +19,8 @@ Only the stored values are copied — callable-default fields are left unset on
 the new instance so they recompute lazily from the copy's own field values::
 
     class RetryConfig(Config):
-        base   = Float(1.0, "Base interval")
-        retry  = Float(lambda self: self.base * 3, "3× base")
+        base = Float(1.0, "Base interval")
+        retry = Float(lambda self: self.base * 3, "3× base")
 
     cfg = RetryConfig()   # retry NOT stored (callable default)
     cfg2 = cfg.copy()
@@ -49,8 +49,8 @@ stored value and will no longer recompute from its sibling.  A
 explicitly set::
 
     class RetryConfig(Config):
-        base   = Float(1.0, "Base interval")
-        retry  = Float(lambda self: self.base * 3, "3× base")
+        base = Float(1.0, "Base interval")
+        retry = Float(lambda self: self.base * 3, "3× base")
 
     cfg = RetryConfig()
     d = cfg.to_dict()     # UserWarning: 'retry' has a callable default…
