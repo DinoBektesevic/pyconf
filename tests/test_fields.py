@@ -465,3 +465,114 @@ class TestDateTimeFields:
             f = DateTime(datetime.datetime(2020, 1, 1), "doc")
         with pytest.raises(TypeError):
             C().f = datetime.date(2021, 6, 15)
+
+
+# ---------------------------------------------------------------------------
+# env= parameter — environment variable fallback
+# ---------------------------------------------------------------------------
+
+class TestEnvVar:
+    """Priority chain: explicit assignment > env var > default."""
+
+    def test_int_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_INT", "42")
+        class C(Config):
+            f = Int(0, "doc", env="MY_INT")
+        assert C().f == 42
+
+    def test_float_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_FLOAT", "3.14")
+        class C(Config):
+            f = Float(0.0, "doc", env="MY_FLOAT")
+        assert C().f == pytest.approx(3.14)
+
+    def test_bool_true_variants(self, monkeypatch):
+        class C(Config):
+            f = Bool(False, "doc", env="MY_BOOL")
+        for val in ("1", "true", "True", "yes", "on"):
+            monkeypatch.setenv("MY_BOOL", val)
+            assert C().f is True, f"Expected True for {val!r}"
+
+    def test_bool_false_variants(self, monkeypatch):
+        class C(Config):
+            f = Bool(False, "doc", env="MY_BOOL")
+        for val in ("0", "false", "False", "no", "off"):
+            monkeypatch.setenv("MY_BOOL", val)
+            assert C().f is False, f"Expected False for {val!r}"
+
+    def test_string_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_STR", "hello")
+        class C(Config):
+            f = String("default", "doc", env="MY_STR")
+        assert C().f == "hello"
+
+    def test_options_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_OPT", "b")
+        class C(Config):
+            f = Options(("a", "b", "c"), "doc", env="MY_OPT")
+        assert C().f == "b"
+
+    def test_options_env_rejects_invalid(self, monkeypatch):
+        monkeypatch.setenv("MY_OPT", "z")
+        class C(Config):
+            f = Options(("a", "b"), "doc", env="MY_OPT")
+        with pytest.raises(ValueError):
+            C().f  # access triggers env read + validate
+
+    def test_path_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_PATH", "/tmp/out")
+        class C(Config):
+            f = Path("./default", "doc", env="MY_PATH")
+        assert C().f == pathlib.Path("/tmp/out")
+
+    def test_seed_reads_int(self, monkeypatch):
+        monkeypatch.setenv("MY_SEED", "99")
+        class C(Config):
+            f = Seed(0, "doc", env="MY_SEED")
+        assert C().f == 99
+
+    def test_seed_reads_none(self, monkeypatch):
+        monkeypatch.setenv("MY_SEED", "none")
+        class C(Config):
+            f = Seed(0, "doc", env="MY_SEED")
+        assert C().f is None
+
+    def test_multioptions_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_MULTI", "a, c")
+        class C(Config):
+            f = MultiOptions(("a", "b", "c"), "doc", env="MY_MULTI")
+        assert C().f == {"a", "c"}
+
+    def test_range_reads_env(self, monkeypatch):
+        monkeypatch.setenv("MY_RANGE", "0.0,1.0")
+        class C(Config):
+            f = Range((0.0, 10.0), "doc", env="MY_RANGE")
+        assert C().f == (0.0, 1.0)
+
+    def test_explicit_assignment_overrides_env(self, monkeypatch):
+        monkeypatch.setenv("MY_INT", "99")
+        class C(Config):
+            f = Int(0, "doc", env="MY_INT")
+        c = C()
+        c.f = 7
+        assert c.f == 7  # stored value wins over env
+
+    def test_default_used_when_env_absent(self):
+        class C(Config):
+            f = Int(42, "doc", env="DEFINITELY_NOT_SET_XYZ")
+        assert C().f == 42
+
+    def test_env_absent_falls_through_to_default(self):
+        class C(Config):
+            f = Float(1.5, "doc", env="DEFINITELY_NOT_SET_XYZ")
+        assert C().f == 1.5
+
+    def test_env_value_not_stored_in_dict(self, monkeypatch):
+        """Env var values are not persisted — re-read on every access."""
+        monkeypatch.setenv("MY_INT", "10")
+        class C(Config):
+            f = Int(0, "doc", env="MY_INT")
+        c = C()
+        _ = c.f  # access it
+        descriptor = type(c).f
+        assert descriptor.private_name not in c.__dict__

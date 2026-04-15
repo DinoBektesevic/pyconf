@@ -7,6 +7,7 @@ directly on `Config` class definitions. Subclass `ConfigField` and override
 """
 
 import numbers
+import os
 
 
 class ConfigField:
@@ -35,6 +36,14 @@ class ConfigField:
         If `True` the value is frozen to ``default_value`` at class-definition
         time and cannot be changed on instances. Any attempted ``__set__``
         raises `AttributeError`. Default is `False`.
+    env : `str` or `None`, optional
+        Name of an environment variable to consult when no explicit value has
+        been stored on the instance. When set, the priority chain is:
+        explicit assignment > environment variable > default. The raw string
+        from ``os.environ`` is coerced by `_from_env_str` and then validated.
+        The env value is **not** stored on the instance — it is re-read on
+        every access, matching the behaviour of callable defaults. ``None``
+        means no environment variable is consulted. Default is `None`.
 
     Raises
     ------
@@ -56,10 +65,11 @@ class ConfigField:
     'something else'
     """
 
-    def __init__(self, default_value, doc, static=False):
+    def __init__(self, default_value, doc, static=False, env=None):
         self.defaultval = default_value
         self.doc = doc
         self.static = static
+        self.env = env
         if not callable(default_value):
             self.validate(default_value)
 
@@ -112,6 +122,12 @@ class ConfigField:
         sentinel = object()
         stored = getattr(obj, self.private_name, sentinel)
         if stored is sentinel:
+            if self.env is not None:
+                raw = os.environ.get(self.env)
+                if raw is not None:
+                    value = self._from_env_str(raw)
+                    self.validate(value)
+                    return value
             if callable(self.defaultval):
                 return self.defaultval(obj)
             return self.defaultval
@@ -141,6 +157,29 @@ class ConfigField:
         self.validate(value)
         setattr(obj, self.private_name, value)
 
+    def _from_env_str(self, s):
+        """Parse a raw environment variable string into this field's type.
+
+        Called by ``__get__`` when ``env`` is set and the named variable is
+        present in the environment but no explicit value has been stored on the
+        instance. The result is then passed to `validate` before being returned.
+
+        Override in subclasses to coerce the raw string to the appropriate
+        type. The base implementation returns the string unchanged, which is
+        correct for `ConfigField` (untyped) and `String`.
+
+        Parameters
+        ----------
+        s : `str`
+            Raw string value from ``os.environ``.
+
+        Returns
+        -------
+        `object`
+            The coerced value, ready to pass to `validate`.
+        """
+        return s
+
     def validate(self, value):
         """Validate a value against this field's constraints.
 
@@ -163,17 +202,21 @@ class ConfigField:
         return True
 
     def __repr__(self):
+        env_part = f", env={self.env!r}" if self.env is not None else ""
         return (
             f"{self.__class__.__name__}("
             f"name={self.public_name!r}, "
             f"default={self.defaultval!r}, "
-            f"doc={self.doc!r})"
+            f"doc={self.doc!r}"
+            f"{env_part})"
         )
 
     def __str__(self):
+        env_part = f", env={self.env!r}" if self.env is not None else ""
         return (
             f"{self.__class__.__name__}("
             f"name={self.public_name!r}, "
             f"default={self.defaultval!r}, "
-            f"doc={self.doc!r})"
+            f"doc={self.doc!r}"
+            f"{env_part})"
         )

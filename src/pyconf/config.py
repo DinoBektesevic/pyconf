@@ -177,7 +177,7 @@ class Config(metaclass=ConfigMeta):
         # ConfigField.__get__ can evaluate them lazily on first access.
         for k, v in self.defaults.items():
             if not isinstance(v, Config) and not getattr(type(self), k).static:
-                if not callable(v.defaultval):
+                if not callable(v.defaultval) and v.env is None:
                     setattr(self, k, v.defaultval)
         for k, v in kwargs.items():
             setattr(self, k, v)

@@ -1,3 +1,8 @@
+.. image:: _static/logo/color_large.svg
+   :alt: pyconf
+   :width: 500px
+   :align: center
+
 pyconf
 ======
 

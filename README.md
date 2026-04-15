@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/_static/logo/color_large.svg" alt="pyconf" width="480">
+</p>
+
 # pyconf
 
 Declare configuration fields next to the classes that use them.

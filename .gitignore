@@ -258,6 +258,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Logo working files (Inkscape/GIMP source, not for distribution)
+logo/_work/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

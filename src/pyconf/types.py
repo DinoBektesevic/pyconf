@@ -5,6 +5,7 @@ validators; for practical reasons.
 """
 
 import datetime
+import json
 import numbers
 import pathlib
 
@@ -88,10 +89,10 @@ class Options(ConfigField):
     ValueError: Expected 'turbo' to be one of ('fast', 'balanced', 'thorough')
     """
 
-    def __init__(self, options, doc, default_value=None, static=False):
+    def __init__(self, options, doc, default_value=None, static=False, env=None):
         self.options = options
         defaultval = options[0] if default_value is None else default_value
-        super().__init__(defaultval, doc, static)
+        super().__init__(defaultval, doc, static=static, env=env)
 
     def validate(self, value):
         if value not in self.options:
@@ -131,10 +132,10 @@ class MultiOptions(ConfigField):
     ...     )
     """
 
-    def __init__(self, options, doc, default_value=None, static=False):
+    def __init__(self, options, doc, default_value=None, static=False, env=None):
         self.options = set(options)
         defaultval = set() if default_value is None else default_value
-        super().__init__(defaultval, doc, static)
+        super().__init__(defaultval, doc, static=static, env=env)
 
     def __set__(self, obj, value):
         # Coerce list to set so that a round-trip through YAML/TOML (which
@@ -142,6 +143,9 @@ class MultiOptions(ConfigField):
         if isinstance(value, list):
             value = set(value)
         super().__set__(obj, value)
+
+    def _from_env_str(self, s):
+        return {item.strip() for item in s.split(",") if item.strip()}
 
     def validate(self, value):
         if not isinstance(value, (set, frozenset)):
@@ -189,12 +193,13 @@ class String(ConfigField):
         minsize=0,
         maxsize=None,
         predicate=None,
-        static=False
+        static=False,
+        env=None,
     ):
         self.minsize = minsize
         self.maxsize = maxsize
         self.predicate = predicate
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
 
     def validate(self, value):
         if not isinstance(value, str):
@@ -247,11 +252,24 @@ class Scalar(ConfigField):
             doc,
             minval=None,
             maxval=None,
-            static=False
+            static=False,
+            env=None,
     ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
+
+    def _from_env_str(self, s):
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            return float(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as a number (env var {self.env!r})"
+            )
 
     def validate(self, value):
         if not isinstance(value, numbers.Number):
@@ -278,6 +296,8 @@ class Int(ConfigField):
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
+    env : `str` or `None`, optional
+        Environment variable name. See `ConfigField`.
 
     Raises
     ------
@@ -293,11 +313,20 @@ class Int(ConfigField):
             doc,
             minval=None,
             maxval=None,
-            static=False
+            static=False,
+            env=None,
     ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
+
+    def _from_env_str(self, s):
+        try:
+            return int(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as int (env var {self.env!r})"
+            )
 
     def validate(self, value):
         if not isinstance(value, int):
@@ -324,6 +353,8 @@ class Float(ConfigField):
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
+    env : `str` or `None`, optional
+        Environment variable name. See `ConfigField`.
 
     Raises
     ------
@@ -339,11 +370,20 @@ class Float(ConfigField):
             doc,
             minval=None,
             maxval=None,
-            static=False
+            static=False,
+            env=None,
     ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
+
+    def _from_env_str(self, s):
+        try:
+            return float(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as float (env var {self.env!r})"
+            )
 
     def validate(self, value):
         if not isinstance(value, (float, int)):
@@ -372,6 +412,16 @@ class Bool(ConfigField):
     TypeError
         If the value is not a `bool`.
     """
+
+    def _from_env_str(self, s):
+        if s.lower() in ("1", "true", "yes", "on"):
+            return True
+        if s.lower() in ("0", "false", "no", "off"):
+            return False
+        raise ValueError(
+            f"Cannot parse {s!r} as bool (env var {self.env!r}). "
+            f"Use 1/0, true/false, yes/no, or on/off."
+        )
 
     def validate(self, value):
         if not isinstance(value, bool):
@@ -411,10 +461,11 @@ class Path(ConfigField):
             default_value,
             doc,
             must_exist=False,
-            static=False
+            static=False,
+            env=None,
     ):
         self.must_exist = must_exist
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
 
     def __set__(self, obj, value):
         # Re-check static here because we bypass super().__set__ (which carries
@@ -427,6 +478,9 @@ class Path(ConfigField):
             raise TypeError(f"Expected a path-like value, got {type(value).__name__!r}")
         self.validate(value)
         setattr(obj, self.private_name, value)
+
+    def _from_env_str(self, s):
+        return pathlib.Path(s)
 
     def validate(self, value):
         if not isinstance(value, pathlib.Path):
@@ -457,6 +511,17 @@ class Seed(ConfigField):
     TypeError
         If the value is not an `int` or `None`.
     """
+
+    def _from_env_str(self, s):
+        if s.lower() in ("none", "null", ""):
+            return None
+        try:
+            return int(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as seed (env var {self.env!r}). "
+                f"Use an integer or 'none'."
+            )
 
     def validate(self, value):
         if value is not None and not isinstance(value, int):
@@ -498,6 +563,27 @@ class Range(ConfigField):
         if isinstance(value, list):
             value = tuple(value)
         super().__set__(obj, value)
+
+    def _from_env_str(self, s):
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise ValueError(
+                f"Cannot parse {s!r} as range (env var {self.env!r}). "
+                f"Expected 'min,max' (e.g. '0.0,1.0')."
+            )
+        def _num(x):
+            x = x.strip()
+            try:
+                return int(x)
+            except ValueError:
+                try:
+                    return float(x)
+                except ValueError:
+                    raise ValueError(
+                        f"Cannot parse {s!r} as range (env var {self.env!r}). "
+                        f"Expected 'min,max' (e.g. '0.0,1.0')."
+                    )
+        return (_num(parts[0]), _num(parts[1]))
 
     def validate(self, value):
         try:
@@ -547,11 +633,21 @@ class List(ConfigField):
         minlen=None,
         maxlen=None,
         static=False,
+        env=None,
     ):
         self.element_type = element_type
         self.minlen = minlen
         self.maxlen = maxlen
-        super().__init__(default_value, doc, static)
+        super().__init__(default_value, doc, static=static, env=env)
+
+    def _from_env_str(self, s):
+        try:
+            result = json.loads(s)
+            if isinstance(result, list):
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return [item.strip() for item in s.split(",") if item.strip()]
 
     def validate(self, value):
         if not isinstance(value, list):
@@ -596,6 +692,14 @@ class Dict(ConfigField):
         If the value is not a `dict`.
     """
 
+    def _from_env_str(self, s):
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, ValueError):
+            raise ValueError(
+                f"Cannot parse {s!r} as JSON dict (env var {self.env!r})"
+            )
+
     def validate(self, value):
         if not isinstance(value, dict):
             raise TypeError(f"Expected a dict, got {type(value).__name__!r}")
@@ -619,6 +723,14 @@ class Date(ConfigField):
     TypeError
         If the value is not a `datetime.date`.
     """
+
+    def _from_env_str(self, s):
+        try:
+            return datetime.date.fromisoformat(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as ISO date (env var {self.env!r})"
+            )
 
     def validate(self, value):
         if not isinstance(value, datetime.date):
@@ -652,6 +764,14 @@ class Time(ConfigField):
             value = datetime.time.fromisoformat(value)
         super().__set__(obj, value)
 
+    def _from_env_str(self, s):
+        try:
+            return datetime.time.fromisoformat(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as ISO time (env var {self.env!r})"
+            )
+
     def validate(self, value):
         if not isinstance(value, datetime.time):
             raise TypeError(f"Expected a datetime.time, got {type(value).__name__!r}")
@@ -676,6 +796,14 @@ class DateTime(ConfigField):
     TypeError
         If the value is not a `datetime.datetime`.
     """
+
+    def _from_env_str(self, s):
+        try:
+            return datetime.datetime.fromisoformat(s)
+        except ValueError:
+            raise ValueError(
+                f"Cannot parse {s!r} as ISO datetime (env var {self.env!r})"
+            )
 
     def validate(self, value):
         if not isinstance(value, datetime.datetime):
