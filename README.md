@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/_static/logo/color_large.svg" alt="pyconf" width="480">
+  <img src="docs/_static/logo/color_large.svg" alt="pyconf" width="200px">
 </p>
 
 # pyconf
