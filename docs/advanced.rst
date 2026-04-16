@@ -24,7 +24,7 @@ This is only a problem if code inspects ``defaultval`` directly (e.g. for
 equality tests or documentation generation).  To keep things consistent,
 normalize in ``Angle.__init__`` as well::
 
-    from pyconf import Config, ConfigField, Float
+    from cfx import Config, ConfigField, Float
 
     class Angle(ConfigField):
         """An angle in degrees, stored normalized to [0, 360)."""
@@ -72,7 +72,7 @@ storage path.  The recommended pattern is:
 3. Store the *normalized* value via ``setattr(obj, self.private_name, normalized)``.
 
 This avoids double-validation (validate once on raw, store normalized) and
-keeps the check and the store close together.  :class:`~pyconf.Path` follows
+keeps the check and the store close together.  :class:`~cfx.Path` follows
 the same pattern — it coerces strings to ``pathlib.Path`` before storing::
 
     class Angle(ConfigField):

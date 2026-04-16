@@ -34,70 +34,69 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Text helpers
-# ---------------------------------------------------------------------------
-
 def textwrap_cell(text, max_w):
-    """Wrap *text* to at most *max_w* characters, returning a list of lines.
+    r"""Reformat a paragraph to fit into no more than ``max_w`` columns.
 
-    An empty string produces a single-element list ``[""]`` so that callers
-    never receive an empty list.
+    By default, tabs in 'text' are expanded with string.expandtabs(), and all
+    other whitespace characters (including newline) are converted to space. An
+    empty string produces a single-element list ``[""]`` so that callers never
+    receive an empty list.
 
     Parameters
     ----------
-    text : str
+    text : `str`
         Cell content to wrap.
-    max_w : int
+    max_w : `int`
         Maximum line width in characters.
 
     Returns
     -------
-    list of str
+    wrapped : `list[str]`
     """
     lines = textwrap.wrap(str(text), max_w)
     return lines if lines else [""]
 
 
 def textwrap_row(row, max_widths):
-    """Apply `textwrap_cell` to each of the three columns in *row*.
+    """Given a list of paragraphs, wraps each paragraph at max_widths columns.
 
     Parameters
     ----------
-    row : tuple of str
+    row : `tuple[str]`
         ``(key, value, description)`` strings.
-    max_widths : tuple of int
+    max_widths : `tuple[int]`
         ``(max_key_w, max_value_w, max_desc_w)`` column limits.
 
     Returns
     -------
-    list of list of str
+    wrapped: `list[list[str]]`
         One list-of-lines per column.
     """
-    return [textwrap_cell(str(row[i]), max_widths[i]) for i in range(3)]
+    return [textwrap_cell(str(row[i]), max_widths[i])
+            for i in range(len(max_widths))]
 
-
-# ---------------------------------------------------------------------------
-# HTML helpers
-# ---------------------------------------------------------------------------
 
 def wrap_cell(content, tag="td", attrs=None):
-    """Wrap *content* in an HTML tag.
+    """Wrap content in an HTML tag.
+
+    Given a string and a tag, returns <tag> content </tag>. The attributes,
+    when provided, are unrolled as html tag attributes, f.e.:
+    <tag id=1> content </tag>
 
     Parameters
     ----------
-    content : str
+    content : `str`
         Inner HTML content.
-    tag : str, optional
+    tag : `str`, optional
         HTML element name. Default ``"td"``.
-    attrs : dict or None, optional
+    attrs : `dict` or `None`, optional
         Mapping of attribute name to value appended to the opening tag,
         e.g. ``{"class": "cfg-key", "id": "n_sigma"}``.
 
     Returns
     -------
-    str
-        ``<tag [attrs]>content</tag>``.
+    wrapped: `str`
+        String of the format: ``<tag [attrs]>content</tag>``.
     """
     attr_str = ""
     if attrs:
@@ -106,21 +105,21 @@ def wrap_cell(content, tag="td", attrs=None):
 
 
 def wrap_row(cells, tag="tr", attrs=None):
-    """Wrap a sequence of cell strings in an HTML row tag.
+    """Wrap a list of strings in an HTML tag.
 
     Parameters
     ----------
-    cells : iterable of str
+    cells : `iterable[str]`
         Cell HTML strings to concatenate inside the row.
-    tag : str, optional
+    tag : `str`, optional
         HTML element name. Default ``"tr"``.
-    attrs : dict or None, optional
+    attrs : `dict` or `None`, optional
         Mapping of attribute name to value, e.g. ``{"class": "cfg-row"}``.
 
     Returns
     -------
-    str
-        ``<tag [attrs]>cells...</tag>``.
+    wrapped: `str`
+        String of the format: ``<tag [attrs]> cells... </tag>``.
     """
     attr_str = ""
     if attrs:
@@ -128,70 +127,83 @@ def wrap_row(cells, tag="tr", attrs=None):
     return f"<{tag}{attr_str}>{''.join(cells)}</{tag}>"
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers  (not in __all__)
-# ---------------------------------------------------------------------------
-
 def fmt_text_row(wrapped_cells, widths):
-    """Format pre-wrapped cells into a fixed-width ``" | "``-separated row.
+    r"""Format a single row into a fixed-width string.
+
+    A single row is an iterable. Each element of a row represents unit of
+    content that is separated from neighboring content by a ``" | "``.
+    The content itself is an iterable such that it spans multiple text-rows,
+    for example:
+
+        | content | content |
+        |         | content |
+
 
     Parameters
     ----------
-    wrapped_cells : list of list of str
+    wrapped_cells : `list[list[str]]`
         One list-of-lines per column, as returned by `textwrap_row`.
-    widths : list of int
+    widths : `list[int]`
         Actual column widths (used for left-justifying each line).
 
     Returns
     -------
-    str
+    textrow : `str`
         One or more lines joined by ``"\\n"``.
     """
     n = max(len(c) for c in wrapped_cells)
     out = []
     for i in range(n):
         parts = [
-            (wrapped_cells[col][i] if i < len(wrapped_cells[col]) else "").ljust(widths[col])
+            (wrapped_cells[col][i] if i < len(wrapped_cells[col]) else "").ljust(widths[col])  # noqa: E501
             for col in range(3)
         ]
         out.append(" | ".join(parts))
     return "\n".join(out)
 
 
+#############################################################################
+#                            Printers
+#############################################################################
+
 def table_rows(cfg):
     """Extract ``(field_name, current_value, doc)`` tuples from *cfg*.
 
     Parameters
     ----------
-    cfg : Config
+    cfg : `Config`
         Any `Config` instance.
 
     Returns
     -------
-    list of tuple
+    rows: `list[tuple]`
     """
-    return [(k, getattr(cfg, k), getattr(type(cfg), k).doc) for k in cfg.keys()]
+    return [(k, getattr(cfg, k), getattr(type(cfg), k).doc) for k in cfg.keys()]  # noqa: E501
 
 
-# ---------------------------------------------------------------------------
-# Unified table builder
-# ---------------------------------------------------------------------------
-
-def make_table(rows, format="text", max_key_width=20, max_value_width=25, max_desc_width=50):
+def make_table(rows, format="text", max_key_width=20, max_value_width=25,
+               max_desc_width=50):
     """Format ``(name, value, doc)`` rows as a text or HTML table.
 
     Parameters
     ----------
-    rows : list of tuple
-        Each tuple is ``(key, value, description)``.
-    format : {"text", "html"}, optional
-        Output format. Default ``"text"``.
-    max_key_width, max_value_width, max_desc_width : int, optional
-        Column width limits for text mode. Ignored in HTML mode.
+    rows : `list[tuple]`
+        Each tuple format is ``(key, value, description)``.
+    format : `str`, optional
+        If format is "text", returns a markdown-like table. If the format is
+        "html", returns a string HTML table. Default "text".
+    max_key_width : `int`, optional
+        Max width for the first column, represents "Key". Ignored in HTML mode.
+    max_value_width : `int`, optional
+        Max width for the second column, represents the value of a config
+        field. Ignored in HTML mode.
+    max_desc_width : `int`, optional
+        Max width for the third column, represents the doc string of a config
+        field. Ignored in HTML mode.
 
     Returns
     -------
-    str
+    table: `str`
         Fixed-width text table or ``<table>…</table>`` HTML string.
     """
     if format == "html":
@@ -227,10 +239,6 @@ def make_table(rows, format="text", max_key_width=20, max_value_width=25, max_de
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Config renderers
-# ---------------------------------------------------------------------------
-
 def as_table(cfg, format="text"):
     """Render a `Config` instance as a full text or HTML table.
 
@@ -239,14 +247,15 @@ def as_table(cfg, format="text"):
 
     Parameters
     ----------
-    cfg : Config
+    cfg : `Config`
         The config instance to render.
-    format : {"text", "html"}, optional
-        Output format. Default ``"text"``.
+    format : `str`, optional
+        When "text" renders a markdown-style table as a string, when "html"
+        renders ``<table>...</table>`` HTML string. Default: text.
 
     Returns
     -------
-    str
+    table : `str`
         Complete rendered representation including title and docstring.
     """
     nested_classes = getattr(type(cfg), "_nested_classes", {})
@@ -261,7 +270,7 @@ def as_table(cfg, format="text"):
                 for confid in nested_classes
             )
             return f"<b>{title}</b>{doc_html}{sub_html}"
-        return f"<b>{title}</b>{doc_html}" + make_table(table_rows(cfg), format="html")
+        return f"<b>{title}</b>{doc_html}" + make_table(table_rows(cfg), format="html")  # noqa: E501
 
     # text mode
     header = f"{title}:"
@@ -281,13 +290,13 @@ def as_inline_string(cfg):
 
     Parameters
     ----------
-    cfg : Config
+    cfg : `Config`
         The config instance to render.
 
     Returns
     -------
-    str
-        Single-line representation suitable for ``__repr__``.
+    cfgstr : `str`
+        Single-line representation of a config.
     """
     nested_classes = getattr(type(cfg), "_nested_classes", {})
     if nested_classes:

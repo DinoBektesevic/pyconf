@@ -5,11 +5,11 @@ Defining a config
    :local:
    :depth: 2
 
-Subclass :class:`~pyconf.Config` and declare field descriptors as class
+Subclass :class:`~cfx.Config` and declare field descriptors as class
 attributes.  Each field carries its default value, type, validation
 constraints, and documentation in one place::
 
-    from pyconf import Config, Float, Int, String, Options, Bool
+    from cfx import Config, Float, Int, String, Options, Bool
 
     class ProcessingConfig(Config):
         """Configuration for the main processing pipeline."""
@@ -60,7 +60,7 @@ Inheritance
 A child class inherits every field from its parent and can add new ones or
 change defaults.  Fields from the full MRO are collected automatically::
 
-    from pyconf import Config, Int, Float, Path, MultiOptions
+    from cfx import Config, Int, Float, Path, MultiOptions
 
     class DetailedConfig(ProcessingConfig):
         """Adds output and diagnostics fields to the processing pipeline."""
@@ -95,7 +95,7 @@ Multiple configs can be combined into a single parent — either as
 **nested sub-objects** (the default) or **flat-merged** into one namespace.
 The short form is just one line::
 
-    from pyconf import Config, Int, String
+    from cfx import Config, Int, String
 
     class FormatConfig(Config):
         """Output formatting settings."""

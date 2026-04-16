@@ -76,7 +76,7 @@ class ConfigMeta(type):
         Base classes.
     attrs : `dict`
         Class body attributes.
-    components : `list` of `Config` subclasses, optional
+    components : `list[Config]`, optional
         Additional config classes to compose into this one.
     method : `str`, optional
         Composition method: ``"unroll"`` (default) or ``"nested"``.
@@ -88,13 +88,13 @@ class ConfigMeta(type):
 
         Parameters
         ----------
-        configs : `list` of `Config` or `None`
+        configs : `list[Config]` or `None`
             Classes whose ``defaults`` dicts are merged in reverse order so
             that the first entry wins on conflict.
 
         Returns
         -------
-        `dict`
+        conf : `dict`
             Mapping of field name to `ConfigField` descriptor.
         """
         conf = {}
@@ -111,12 +111,12 @@ class ConfigMeta(type):
 
         Parameters
         ----------
-        components : `list` of `Config` or `None`
+        components : `list[Config]` or `None`
             Classes to instantiate as sub-config objects.
 
         Returns
         -------
-        `dict`
+        nested : `dict`
             Mapping of ``confid`` to instantiated `Config` object.
         """
         nested = {}
@@ -294,7 +294,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `list`
+        values : `list`
             Current field values in declaration order.
         """
         return [getattr(self, k) for k in self.keys()]
@@ -304,7 +304,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `list` of `tuple`
+        pairs : `list[tuple]`
             ``(field_name, current_value)`` pairs in declaration order.
         """
         return [(k, getattr(self, k)) for k in self.keys()]
@@ -348,7 +348,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `dict`
+        diffs : `dict`
             Mapping of field name to ``(self_value, other_value)`` for every
             field whose value differs.
 
@@ -378,7 +378,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `Config`
+        cfg : `Config`
             A new instance of the same class with the same field values,
             except where overridden.
 
@@ -463,7 +463,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `Config`
+        cfg : `Config`
             A new instance with values from ``mapping``.
 
         Raises
@@ -502,7 +502,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `dict`
+        d : `dict`
             Mapping of field names to their current values. Nested `Config`
             sub-objects are serialized recursively. `pathlib.Path` values are
             serialized as strings so the result is always JSON/YAML/TOML-safe.
@@ -550,7 +550,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `Config`
+        cfg : `Config`
             A new instance with values from the YAML.
 
         Raises
@@ -570,7 +570,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `str`
+        yaml_str : `str`
             YAML representation of the config.
 
         Raises
@@ -598,7 +598,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `Config`
+        cfg : `Config`
             A new instance with values from the TOML.
 
         Raises
@@ -619,7 +619,7 @@ class Config(metaclass=ConfigMeta):
 
         Returns
         -------
-        `str`
+        toml_str : `str`
             TOML representation of the config.
 
         Raises

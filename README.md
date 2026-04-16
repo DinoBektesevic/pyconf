@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/_static/logo/color_large.svg" alt="pyconf" width="200px">
+  <img src="https://raw.githubusercontent.com/DinoBektesevic/pyconf/main/docs/_static/logo/color_large.svg" alt="cfx" width="300">
 </p>
 
-# pyconf
+# cfg
 
 Declare configuration fields next to the classes that use them.
 Each field carries its own default value, type checking, and documentation.
 
 ```python
-from pyconf import Config, Float, Int, Options, Bool
+from cfg import Config, Float, Int, Options, Bool
 
 class RunConfig(Config):
     """Configuration for a data-processing run."""
@@ -45,21 +45,21 @@ verbose    | False | Enable verbose logging
 ## Installation
 
 ```bash
-pip install pyconf
+pip install cfg
 ```
 
 With optional serialization backends:
 
 ```bash
-pip install "pyconf[yaml]"   # adds PyYAML
-pip install "pyconf[toml]"   # adds tomli-w
-pip install "pyconf[all]"    # both
+pip install "cfg[yaml]"   # adds PyYAML
+pip install "cfg[toml]"   # adds tomli-w
+pip install "cfg[all]"    # both
 ```
 
 ## Quick start
 
 ```python
-from pyconf import Config, Int, Float, String, Options, Bool, Path
+from cfg import Config, Int, Float, String, Options, Bool, Path
 
 class ProcessingConfig(Config):
     confid = "processing"
@@ -92,7 +92,7 @@ cfg.diff(modified)   # {'iterations': (200, 500)}
 Combine configs into nested sub-objects or a flat merged namespace:
 
 ```python
-from pyconf import Config, Int, String
+from cfg import Config, Int, String
 
 class FormatConfig(Config):
     confid = "format"

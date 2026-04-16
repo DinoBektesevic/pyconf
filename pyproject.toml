@@ -3,15 +3,14 @@ requires = ["setuptools>=77.0.3", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyconf"
+name = "cfx"
 dynamic = ["version"]
 description = "Lightweight self-documenting configuration classes via Python descriptors."
 readme = "README.md"
 authors = [
     { name = "DinoBektesevic", email = "ljetibo@gmail.com" }
 ]
-license = {file = "LICENSE"}
-license-expression = "GPL-3.0-only"
+license = "GPL-3.0-only"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -26,7 +25,7 @@ docs = [
     "numpydoc",
     "sphinx-rtd-theme",
 ]
-dev = ["pyconf[test,docs]", "flake8"]
+dev = ["cfg[test,docs]", "flake8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

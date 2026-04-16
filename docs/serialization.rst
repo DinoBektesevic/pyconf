@@ -9,9 +9,9 @@ Serialization
 dict
 ----
 
-:meth:`~pyconf.Config.to_dict` / :meth:`~pyconf.Config.from_dict` convert
+:meth:`~cfx.Config.to_dict` / :meth:`~cfx.Config.from_dict` convert
 to and from a plain Python dict.  ``from_dict`` calls
-:meth:`~pyconf.Config.validate` automatically after loading::
+:meth:`~cfx.Config.validate` automatically after loading::
 
     d    = cfg.to_dict()
     cfg2 = ProcessingConfig.from_dict(d)

@@ -5,7 +5,7 @@ import pathlib
 import warnings
 import pytest
 
-from pyconf import (
+from cfx import (
     Config, ConfigField,
     Any, Bool, Int, Float, Scalar, String,
     Options, MultiOptions, Path, Seed, Range,

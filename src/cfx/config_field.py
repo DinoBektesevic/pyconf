@@ -43,7 +43,7 @@ class ConfigField:
         been stored on the instance. When set, the priority chain is:
         explicit assignment > environment variable > default. The raw string
         from ``os.environ`` is coerced by `_from_env_str` and then validated.
-        The env value is **not** stored on the instance — it is re-read on
+        The env value is not stored on the instance — it is re-read on
         every access, matching the behaviour of callable defaults. ``None``
         means no environment variable is consulted. Default is `None`.
 
@@ -98,7 +98,7 @@ class ConfigField:
 
         Returns
         -------
-        `object`
+        value : `object`
             The coerced value, ready to pass to `validate`.
         """
         return s
@@ -176,9 +176,13 @@ class ConfigField:
 
         For static fields, always returns `defaultval`.
 
-        For non-static fields with a callable default and no explicitly stored
-        value, calls ``defaultval(obj)`` on each access so that changes to
-        sibling fields are naturally reflected without caching.
+        For non-static fields with no explicitly stored value, the lookup
+        order is:
+
+        - explicit assignment (stored on the instance)
+        - environment variable, when `env` is set and the variable is
+          present in ``os.environ``
+        - ``defaultval``, called if callable, returned directly otherwise
 
         Parameters
         ----------
@@ -189,7 +193,7 @@ class ConfigField:
 
         Returns
         -------
-        `object`
+        value : `object`
             The field value, or this descriptor when ``obj`` is `None`.
         """
         if obj is None:

@@ -9,7 +9,7 @@ Fields
 Field types
 -----------
 
-All field types inherit from :class:`~pyconf.ConfigField` and accept a
+All field types inherit from :class:`~cfx.ConfigField` and accept a
 default value as their first argument and a ``doc`` string as their second.
 Most also accept constraint parameters (``minval``, ``maxsize``, etc.) and a
 ``static=True`` flag (see `Static fields`_ below).
@@ -20,50 +20,50 @@ Most also accept constraint parameters (``minval``, ``maxsize``, etc.) and a
 
    * - Type
      - Description
-   * - :class:`~pyconf.ConfigField`
+   * - :class:`~cfx.ConfigField`
      - Base class.  No validation; accepts any value.  Use when you intend
        to subclass it (see `Defining your own field`_).
-   * - :class:`~pyconf.Any`
+   * - :class:`~cfx.Any`
      - Explicit escape hatch.  No validation; signals to readers that the
        absence of constraints is intentional.
-   * - :class:`~pyconf.Bool`
+   * - :class:`~cfx.Bool`
      - ``True`` or ``False``.  Rejects ``int`` — unlike Python's own
        truthiness, ``1`` is not a ``bool`` here.
-   * - :class:`~pyconf.Int`
+   * - :class:`~cfx.Int`
      - Integer.  Optional ``minval`` and ``maxval``.
-   * - :class:`~pyconf.Float`
+   * - :class:`~cfx.Float`
      - Float.  Also accepts ``int`` on assignment.  Optional ``minval``
        and ``maxval``.
-   * - :class:`~pyconf.Scalar`
+   * - :class:`~cfx.Scalar`
      - Either ``int`` or ``float``.  Use when both are acceptable.
        Optional ``minval`` and ``maxval``.
-   * - :class:`~pyconf.String`
+   * - :class:`~cfx.String`
      - Text string.  Optional ``minsize``, ``maxsize``, and ``predicate``
        (a callable that returns ``True`` for valid values).
-   * - :class:`~pyconf.Options`
+   * - :class:`~cfx.Options`
      - One value from a fixed set.  Default is the first option unless
        ``default_value`` is supplied.
-   * - :class:`~pyconf.MultiOptions`
+   * - :class:`~cfx.MultiOptions`
      - A ``set`` that is a subset of a fixed set of choices.
-   * - :class:`~pyconf.Path`
+   * - :class:`~cfx.Path`
      - A ``pathlib.Path``.  Coerces plain strings on assignment.  Optional
        ``must_exist=True`` to reject paths that do not exist on disk.
-   * - :class:`~pyconf.Seed`
+   * - :class:`~cfx.Seed`
      - An ``int`` or ``None``.  ``None`` conventionally means "draw
        randomly at runtime".  Semantically distinct from ``Int(None, ...)``.
-   * - :class:`~pyconf.Range`
+   * - :class:`~cfx.Range`
      - A ``(min, max)`` tuple.  Validates ``min < max``.  Linear ranges
        only — see `Defining your own field`_ for angular or cyclical ranges.
-   * - :class:`~pyconf.List`
+   * - :class:`~cfx.List`
      - A list.  Optional ``element_type``, ``minlen``, and ``maxlen``.
-   * - :class:`~pyconf.Dict`
+   * - :class:`~cfx.Dict`
      - An untyped dict.  Useful for free-form sub-structure that is too
-       loose to warrant a nested :class:`~pyconf.Config`.
-   * - :class:`~pyconf.Date`
+       loose to warrant a nested :class:`~cfx.Config`.
+   * - :class:`~cfx.Date`
      - A ``datetime.date``.
-   * - :class:`~pyconf.Time`
+   * - :class:`~cfx.Time`
      - A ``datetime.time``.
-   * - :class:`~pyconf.DateTime`
+   * - :class:`~cfx.DateTime`
      - A ``datetime.datetime``.  Rejects bare ``date`` instances.
 
 
@@ -93,7 +93,7 @@ individual fields), use :ref:`freeze` instead.
 Cross-field validation
 ----------------------
 
-Override :meth:`~pyconf.Config.validate` to enforce constraints that span
+Override :meth:`~cfx.Config.validate` to enforce constraints that span
 multiple fields.  The base implementation does nothing.  It is called
 automatically after every deserialization::
 
@@ -122,15 +122,15 @@ Call ``validate()`` manually at any time to recheck after interactive edits::
 Defining your own field
 -----------------------
 
-Subclass :class:`~pyconf.ConfigField` and override :meth:`validate` to add
+Subclass :class:`~cfx.ConfigField` and override :meth:`validate` to add
 type or constraint checks.  Override :meth:`__set__` when you also need to
 **transform** the value before storing it.
 
-:class:`~pyconf.Range` only supports linear ``(min, max)`` pairs — it cannot
+:class:`~cfx.Range` only supports linear ``(min, max)`` pairs — it cannot
 represent an angular range like 350° to 10°, because "close" is
 domain-specific.  A custom field handles this naturally::
 
-    from pyconf import Config, ConfigField, Float
+    from cfx import Config, ConfigField, Float
 
     class Angle(ConfigField):
         """An angle in degrees, stored normalized to [0, 360)."""

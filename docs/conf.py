@@ -1,11 +1,11 @@
-"""Sphinx configuration for pyconf."""
+"""Sphinx configuration for cfg."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-project = "pyconf"
+project = "cfx"
 author = "Dino Bektesevic"
 copyright = f"2026, {author}"
 

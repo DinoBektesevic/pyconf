@@ -40,13 +40,13 @@ Two config instances compare equal when all their field values are equal::
 Copying and diffing
 -------------------
 
-:meth:`~pyconf.Config.copy` returns a new instance with the same field values.
+:meth:`~cfx.Config.copy` returns a new instance with the same field values.
 Pass keyword arguments to override specific fields in the copy::
 
     base = ProcessingConfig()
     modified = base.copy(iterations=500, mode="thorough")
 
-:meth:`~pyconf.Config.diff` returns a dict of the fields that differ between
+:meth:`~cfx.Config.diff` returns a dict of the fields that differ between
 two instances of the same type::
 
     base.diff(modified)
@@ -59,7 +59,7 @@ config has callable (computed) defaults.
 Updating
 --------
 
-:meth:`~pyconf.Config.update` applies several field changes at once.  Each
+:meth:`~cfx.Config.update` applies several field changes at once.  Each
 value goes through the same descriptor validation as direct assignment::
 
     cfg.update({"iterations": 50, "threshold": 0.8})
@@ -70,8 +70,8 @@ value goes through the same descriptor validation as direct assignment::
 Freezing
 --------
 
-:meth:`~pyconf.Config.freeze` makes an instance read-only.  Any subsequent
-field assignment raises :exc:`~pyconf.FrozenConfigError`::
+:meth:`~cfx.Config.freeze` makes an instance read-only.  Any subsequent
+field assignment raises :exc:`~cfx.FrozenConfigError`::
 
     cfg = ProcessingConfig()
     cfg.freeze()

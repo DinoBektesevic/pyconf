@@ -1,9 +1,9 @@
-"""pyconf — lightweight self-documenting configuration classes.
+"""cfx — lightweight self-documenting configuration classes.
 
 Declare typed, validated, and documented configuration fields directly
 on the class that uses them, using Python descriptors::
 
-    from pyconf import Config, Float, Options, Bool
+    from cfx import Config, Float, Options, Bool
 
     class SearchConfig(Config):
         \"\"\"Configuration for the main search algorithm.\"\"\"

@@ -9,7 +9,7 @@ pyconf
 Declare configuration fields next to the classes that use them.
 Each field carries its own default value, type checking, and documentation::
 
-    from pyconf import Config, Float, Int, Options, Bool
+    from cfx import Config, Float, Int, Options, Bool
 
     class RunConfig(Config):
         """Configuration for a data-processing run."""
@@ -43,7 +43,7 @@ What you get:
   flat (all fields in one namespace) or nested (sub-objects by name).
 - **Serializable** — round-trip to/from dict, YAML, and TOML with one method
   call.
-- **Extensible** — subclass :class:`~pyconf.ConfigField` to add your own
+- **Extensible** — subclass :class:`~cfx.ConfigField` to add your own
   field types with custom validation and normalization.
 - **Zero hard dependencies** — YAML and TOML support are optional soft
   dependencies.

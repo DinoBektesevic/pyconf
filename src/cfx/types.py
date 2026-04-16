@@ -560,7 +560,7 @@ class Range(ConfigField):
 
     Parameters
     ----------
-    default_value : `tuple` of two `numbers.Number`, or `callable`
+    default_value : `tuple[numbers.Number, numbers.Number]` or `callable`
         Default ``(min, max)`` tuple or lazy factory.
     doc : `str`
         Documentation.

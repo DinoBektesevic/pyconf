@@ -13,7 +13,7 @@ Sharp edges
 copy() and callable defaults
 ----------------------------
 
-:meth:`~pyconf.Config.copy` distinguishes between fields that have an
+:meth:`~cfx.Config.copy` distinguishes between fields that have an
 explicitly stored value and fields whose value comes from a callable default.
 Only the stored values are copied — callable-default fields are left unset on
 the new instance so they recompute lazily from the copy's own field values::

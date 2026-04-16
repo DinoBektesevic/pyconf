@@ -8,7 +8,7 @@ to make name-conflict behaviour explicit.
 import datetime
 import pytest
 
-from pyconf import (
+from cfx import (
     Config,
     ConfigField,
     FrozenConfigError,

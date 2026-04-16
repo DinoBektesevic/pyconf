@@ -2,7 +2,7 @@
 
 import pytest
 
-from pyconf import Config, ConfigField, FrozenConfigError, Int, Float, String, Options
+from cfx import Config, ConfigField, FrozenConfigError, Int, Float, String, Options
 from .conftest import (
     BaseConfig, ExtrasConfig, ChildConfig, GrandchildConfig,
     IndependentConfig, CompoundConfig, NestedConfig,
