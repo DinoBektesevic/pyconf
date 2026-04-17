@@ -1,57 +1,76 @@
 """CLI integration helpers for cfx Config classes.
 
 This module is intentionally not part of the public API. Use the classmethods
-on `Config` (``add_arguments``, ``from_args``, ``from_cli``, ``click_options``,
+on `Config` (``add_arguments``, ``from_argparse``, ``click_options``,
 ``from_click``) instead.
 """
 
 import argparse
 
 from .types import (
-    Bool, Date, DateTime, Dict, Float, Int, List, MultiOptions,
-    Options, Path, Range, Scalar, Seed, Time,
+    Bool,
+    Date,
+    DateTime,
+    Dict,
+    List,
+    MultiOptions,
+    Options,
+    Path,
+    Range,
+    Seed,
+    Time,
 )
+
+try:
+    import click
+except ImportError:
+    click = None
 
 
 __all__ = []   # internal module; nothing exported
 
 
-def _flag_name(name, prefix):
-    """Return the CLI flag string (e.g. ``--search.n-sigma``).
+# Maps field class -> function(descriptor) -> extra kwargs for add_argument.
+# Classes absent from this table fall through to from_string + metavar.
+# Bool is excluded - it uses action= instead of type= and is handled directly.
+_ARGPARSE_SPECIAL = {
+    MultiOptions: lambda d: {
+        "nargs": "+",
+        "choices": list(d.options),
+        "type": str,
+    },
+    Options: lambda d: {
+        "choices": list(d.options),
+        "type": str,
+    },
+    List: lambda d: {
+        "nargs": "+",
+        "type": d.element_type if d.element_type is not None else str,
+    },
+}
 
-    Parameters
-    ----------
-    name : `str`
-        Field attribute name (underscores allowed).
-    prefix : `str`
-        Dot-separated prefix for nested configs. Empty string means no prefix.
+# Maps field class -> metavar string shown in --help output.
+_ARGPARSE_METAVAR = {
+    Path: "PATH",
+    Seed: "INT|none",
+    Range: "MIN,MAX",
+    Dict: "JSON",
+    Date: "YYYY-MM-DD",
+    Time: "HH:MM:SS",
+    DateTime: "YYYY-MM-DDTHH:MM:SS",
+}
 
-    Returns
-    -------
-    flag : `str`
-        Option string such as ``"--n-sigma"`` or ``"--search.n-sigma"``.
-    """
+
+def flag_name(name, prefix):
+    """Return the CLI flag string (e.g. ``--search.n-sigma``)."""
     hyphenated = name.replace("_", "-")
     if prefix:
         return f"--{prefix}.{hyphenated}"
     return f"--{hyphenated}"
 
 
-def _dest_name(name, prefix):
-    """Return the argparse dest (e.g. ``search.n_sigma``).
-
-    Parameters
-    ----------
-    name : `str`
-        Field attribute name.
-    prefix : `str`
-        Dot-separated prefix for nested configs.
-
-    Returns
-    -------
-    dest : `str`
-        Destination key used in the parsed namespace dict.
-    """
+def dest_name(name, prefix):
+    """Return the argparse dest (e.g. ``search.n_sigma``)."""
     if prefix:
         return f"{prefix}.{name}"
     return name
@@ -85,72 +104,46 @@ def field_to_argparse_kwargs(name, descriptor, prefix=""):
         Type- or action-specific keys (``"type"``, ``"action"``, ``"choices"``,
         ``"nargs"``, ``"metavar"``) are added as appropriate.
     """
-    flag = _flag_name(name, prefix)
-    dest = _dest_name(name, prefix)
-    kwargs = {"flag": flag, "dest": dest, "default": None, "help": descriptor.doc}
+    kwargs = {
+        "flag": flag_name(name, prefix),
+        "dest": dest_name(name, prefix),
+        "default": None,
+        "help": descriptor.doc,
+    }
 
     if isinstance(descriptor, Bool):
         kwargs["action"] = argparse.BooleanOptionalAction
         return kwargs
 
-    if isinstance(descriptor, MultiOptions):
-        kwargs["nargs"] = "+"
-        kwargs["choices"] = list(descriptor.options)
-        kwargs["type"] = str
+    extra_fn = _ARGPARSE_SPECIAL.get(type(descriptor))
+    if extra_fn is not None:
+        kwargs.update(extra_fn(descriptor))
         return kwargs
 
-    if isinstance(descriptor, Options):
-        kwargs["choices"] = list(descriptor.options)
-        kwargs["type"] = str
-        return kwargs
-
-    if isinstance(descriptor, (Int, Float, Scalar)):
-        kwargs["type"] = descriptor.from_string
-        return kwargs
-
-    if isinstance(descriptor, Path):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "PATH"
-        return kwargs
-
-    if isinstance(descriptor, Seed):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "INT|none"
-        return kwargs
-
-    if isinstance(descriptor, Range):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "MIN,MAX"
-        return kwargs
-
-    if isinstance(descriptor, List):
-        kwargs["nargs"] = "+"
-        kwargs["type"] = descriptor.element_type if descriptor.element_type is not None else str
-        return kwargs
-
-    if isinstance(descriptor, Dict):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "JSON"
-        return kwargs
-
-    if isinstance(descriptor, DateTime):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "YYYY-MM-DDTHH:MM:SS"
-        return kwargs
-
-    if isinstance(descriptor, Date):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "YYYY-MM-DD"
-        return kwargs
-
-    if isinstance(descriptor, Time):
-        kwargs["type"] = descriptor.from_string
-        kwargs["metavar"] = "HH:MM:SS"
-        return kwargs
-
-    # ConfigField / Any / String / fallback
-    kwargs["type"] = str
+    # General case: use from_string as the argparse type= callable,
+    # plus an optional metavar for fields with a non-obvious string format.
+    kwargs["type"] = descriptor.from_string
+    metavar = _ARGPARSE_METAVAR.get(type(descriptor))
+    if metavar is not None:
+        kwargs["metavar"] = metavar
     return kwargs
+
+# Maps field class -> function(descriptor) -> extra kwargs for click.option.
+# Bool and classes absent from this table are handled separately.
+def click_special(descriptor):  # noqa: E302
+    """Return extra click.option kwargs for types needing special handling."""
+    cls = type(descriptor)
+    if cls is MultiOptions:
+        return {
+            "type": click.Choice(list(descriptor.options)),
+            "multiple": True,
+        }
+    if cls is Options:
+        return {"type": click.Choice(list(descriptor.options))}
+    if cls is List:
+        et = descriptor.element_type
+        return {"type": et if et is not None else str, "multiple": True}
+    return None
 
 
 def field_to_click_option(name, descriptor, prefix=""):
@@ -158,7 +151,7 @@ def field_to_click_option(name, descriptor, prefix=""):
 
     The CLI flag uses dot notation for namespacing (``--search.n-sigma``).
     The click parameter name uses double underscores instead of dots
-    (``search__n_sigma``) so it is a valid Python identifier. `from_click`
+    (``search__n_sigma``) so it is a valid Python identifier. `fromclick`
     reverses this encoding when routing values to the appropriate sub-config.
 
     Parameters
@@ -181,18 +174,14 @@ def field_to_click_option(name, descriptor, prefix=""):
     ImportError
         If ``click`` is not installed.
     """
-    try:
-        import click
-    except ImportError:
+    if click is None:
         raise ImportError(
             "click is required for click_options(). "
             "Install it with: pip install click"
         )
 
-    flag = _flag_name(name, prefix)
-    # click param_decls: use double-underscore for dots so the name is a valid
-    # Python identifier that click and from_click can both handle.
-    param_name = f"{prefix}__{name}" if prefix else name
+    flag = flag_name(name, prefix)
+    param_name = f"{prefix.replace('.', '__')}__{name}" if prefix else name
     base_kw = {"default": None, "help": descriptor.doc, "show_default": False}
 
     if isinstance(descriptor, Bool):
@@ -203,28 +192,11 @@ def field_to_click_option(name, descriptor, prefix=""):
             flag_pair = f"--{hyphenated}/--no-{hyphenated}"
         return click.option(flag_pair, param_name, **base_kw)
 
-    if isinstance(descriptor, MultiOptions):
-        return click.option(
-            flag, param_name,
-            type=click.Choice(list(descriptor.options)),
-            multiple=True,
-            **base_kw,
-        )
+    extra = click_special(descriptor)
+    if extra is not None:
+        return click.option(flag, param_name, **extra, **base_kw)
 
-    if isinstance(descriptor, Options):
-        return click.option(
-            flag, param_name,
-            type=click.Choice(list(descriptor.options)),
-            **base_kw,
-        )
-
-    if isinstance(descriptor, (Int, Float, Scalar, Path, Seed, Range, Dict,
-                                Date, Time, DateTime)):
-        return click.option(flag, param_name, type=descriptor.from_string, **base_kw)
-
-    if isinstance(descriptor, List):
-        elem = descriptor.element_type if descriptor.element_type is not None else str
-        return click.option(flag, param_name, type=elem, multiple=True, **base_kw)
-
-    # ConfigField / Any / String / fallback
-    return click.option(flag, param_name, type=str, **base_kw)
+    # General case: use from_string as the click type= callable.
+    return click.option(
+        flag, param_name, type=descriptor.from_string, **base_kw
+    )

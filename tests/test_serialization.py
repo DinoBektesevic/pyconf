@@ -5,15 +5,16 @@ import pathlib
 import warnings
 import pytest
 
-from cfx import (
-    Config, ConfigField,
-    Any, Bool, Int, Float, Scalar, String,
-    Options, MultiOptions, Path, Seed, Range,
-    List, Dict, Date, Time, DateTime,
-)
+from cfx import Config, Float
 from .conftest import (
-    BaseConfig, ExtrasConfig, ChildConfig, GrandchildConfig,
-    IndependentConfig, CompoundConfig, NestedConfig,
+    BaseConfig,
+    ExtrasConfig,
+    ChildConfig,
+    GrandchildConfig,
+    CompoundConfig,
+    NestedConfig,
+    DeepOuterConfig,
+    MixedConfig,
 )
 
 
@@ -37,7 +38,7 @@ def roundtrip_toml(cls, instance):
 
 
 # ---------------------------------------------------------------------------
-# Flat config — dict round-trip, every field type
+# Flat config - dict round-trip, every field type
 # ---------------------------------------------------------------------------
 
 class TestDictRoundTripBase:
@@ -139,7 +140,9 @@ class TestDictRoundTripStrict:
             BaseConfig.from_dict({"field1": "x", "unknown": 1}, strict=True)
 
     def test_nonstrict_ignores_unknown_key(self):
-        cfg = BaseConfig.from_dict({"field1": "hi", "unknown": 1}, strict=False)
+        cfg = BaseConfig.from_dict(
+            {"field1": "hi", "unknown": 1}, strict=False
+        )
         assert cfg.field1 == "hi"
 
 
@@ -225,8 +228,10 @@ class TestDictRoundTripNested:
 class TestCallableDefaultWarning:
     def test_to_dict_warns_for_callable_default(self):
         class DerivedConfig(Config):
-            base   = Float(2.0, "A base value")
-            triple = Float(lambda self: self.base * 3, "3× base, unless overridden")
+            base = Float(2.0, "A base value")
+            triple = Float(
+                lambda self: self.base * 3, "3x base, unless overridden"
+            )
 
         cfg = DerivedConfig()
         with warnings.catch_warnings(record=True) as caught:
@@ -237,8 +242,10 @@ class TestCallableDefaultWarning:
 
     def test_to_dict_no_warning_when_explicitly_set(self):
         class DerivedConfig(Config):
-            base   = Float(2.0, "A base value")
-            triple = Float(lambda self: self.base * 3, "3× base, unless overridden")
+            base = Float(2.0, "A base value")
+            triple = Float(
+                lambda self: self.base * 3, "3x base, unless overridden"
+            )
 
         cfg = DerivedConfig()
         cfg.triple = 99.0
@@ -330,3 +337,78 @@ class TestTomlRoundTrip:
         n.grandchild.field1 = "toml_loaded"
         rt = roundtrip_toml(NestedConfig, n)
         assert rt.grandchild.field1 == "toml_loaded"
+
+
+# ---------------------------------------------------------------------------
+# Multi-level nested config round-trips
+# ---------------------------------------------------------------------------
+
+class TestDeepNestedRoundTrip:
+    def test_yaml(self):
+        pytest.importorskip("yaml")
+        cfg = DeepOuterConfig()
+        cfg.middle.inner.x = 9.9
+        rt = roundtrip_yaml(DeepOuterConfig, cfg)
+        assert rt.middle.inner.x == 9.9
+
+    def test_toml(self):
+        pytest.importorskip("tomli_w")
+        cfg = DeepOuterConfig()
+        cfg.middle.inner.x = 9.9
+        rt = roundtrip_toml(DeepOuterConfig, cfg)
+        assert rt.middle.inner.x == 9.9
+
+    def test_middle_own_field_yaml(self):
+        pytest.importorskip("yaml")
+        cfg = DeepOuterConfig()
+        cfg.middle.y = 7.7
+        cfg.middle.inner.x = 3.3
+        rt = roundtrip_yaml(DeepOuterConfig, cfg)
+        assert rt.middle.y == 7.7
+        assert rt.middle.inner.x == 3.3
+
+    def test_middle_own_field_toml(self):
+        pytest.importorskip("tomli_w")
+        cfg = DeepOuterConfig()
+        cfg.middle.y = 7.7
+        cfg.middle.inner.x = 3.3
+        rt = roundtrip_toml(DeepOuterConfig, cfg)
+        assert rt.middle.y == 7.7
+        assert rt.middle.inner.x == 3.3
+
+
+# ---------------------------------------------------------------------------
+# Mixed flat+nested round-trips
+# ---------------------------------------------------------------------------
+
+class TestMixedConfigRoundTrip:
+    def test_dict_round_trip(self):
+        cfg = MixedConfig()
+        cfg.top_field = 42.0
+        cfg.inner.x = 5.5
+        rt = roundtrip_dict(MixedConfig, cfg)
+        assert rt.top_field == 42.0
+        assert rt.inner.x == 5.5
+
+    def test_to_dict_structure(self):
+        d = MixedConfig().to_dict()
+        assert d["top_field"] == 99.0
+        assert d["inner"]["x"] == 1.0
+
+    def test_yaml_round_trip(self):
+        pytest.importorskip("yaml")
+        cfg = MixedConfig()
+        cfg.top_field = 42.0
+        cfg.inner.x = 5.5
+        rt = roundtrip_yaml(MixedConfig, cfg)
+        assert rt.top_field == 42.0
+        assert rt.inner.x == 5.5
+
+    def test_toml_round_trip(self):
+        pytest.importorskip("tomli_w")
+        cfg = MixedConfig()
+        cfg.top_field = 42.0
+        cfg.inner.x = 5.5
+        rt = roundtrip_toml(MixedConfig, cfg)
+        assert rt.top_field == 42.0
+        assert rt.inner.x == 5.5

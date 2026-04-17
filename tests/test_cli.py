@@ -34,8 +34,7 @@ def parse(cfg_cls, argv):
     """Parse *argv* into a `Config` instance via argparse."""
     parser = argparse.ArgumentParser()
     cfg_cls.add_arguments(parser)
-    ns = parser.parse_args(argv)
-    return cfg_cls.from_args(ns)
+    return cfg_cls.from_argparse(parser.parse_args(argv))
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +51,9 @@ class FlatConfig(Config):
     scale = Scalar(1.0, "Scaling factor")
     seed = Seed(None, "RNG seed")
     bounds = Range((0.0, 1.0), "Value bounds")
-    steps = MultiOptions(("a", "b", "c"), "Pipeline steps", default_value={"a"})
+    steps = MultiOptions(
+        ("a", "b", "c"), "Pipeline steps", default_value={"a"}
+    )
     output = Path("./out", "Output directory")
     meta = Dict({}, "Metadata dict")
     tags = List([], "Tag list", element_type=str)
@@ -74,13 +75,34 @@ class OutputConfig(Config):
     compress = Bool(False, "Compress output")
 
 
-class PipelineConfig(Config, components=[SearchConfig, OutputConfig], method="nested"):
+class PipelineConfig(
+    Config, components=[SearchConfig, OutputConfig], method="nested"
+):
     """Nested pipeline config."""
     pass
 
 
+class DeepInner(Config):
+    confid = "inner"
+    value = Float(1.0, "inner value")
+
+
+class DeepMiddle(Config, components=[DeepInner], method="nested"):
+    confid = "middle"
+    y = Float(2.0, "middle y")
+
+
+class DeepOuter(Config, components=[DeepMiddle], method="nested"):
+    confid = "outer"
+
+
+class MixedCLI(Config, components=[DeepInner], method="nested"):
+    confid = "mixedcli"
+    top_val = Float(99.0, "flat field on the nested container")
+
+
 # ---------------------------------------------------------------------------
-# add_arguments / from_args — flat fields
+# add_arguments / from_argparse - flat fields
 # ---------------------------------------------------------------------------
 
 class TestArgparseFlat:
@@ -175,97 +197,193 @@ class TestArgparseFlat:
         assert cfg.mode == "fast"
 
     def test_multiple_overrides(self):
-        cfg = parse(FlatConfig, ["--n-sigma", "2.0", "--mode", "balanced", "--verbose"])
+        cfg = parse(
+            FlatConfig, ["--n-sigma", "2.0", "--mode", "balanced", "--verbose"]
+        )
         assert cfg.n_sigma == 2.0
         assert cfg.mode == "balanced"
         assert cfg.verbose is True
 
 
 # ---------------------------------------------------------------------------
-# add_arguments / from_args — nested configs
+# add_arguments / from_argparse - nested configs
 # ---------------------------------------------------------------------------
 
 class TestArgparseNested:
     def test_nested_float(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args(["--search.n-sigma", "3.0"])
-        cfg = PipelineConfig.from_args(ns)
+        cfg = PipelineConfig.from_argparse(
+            parser.parse_args(["--search.n-sigma", "3.0"])
+        )
         assert cfg.search.n_sigma == 3.0
 
     def test_nested_bool_true(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args(["--search.verbose"])
-        cfg = PipelineConfig.from_args(ns)
+        cfg = PipelineConfig.from_argparse(
+            parser.parse_args(["--search.verbose"])
+        )
         assert cfg.search.verbose is True
 
     def test_nested_bool_false(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args(["--no-search.verbose"])
-        cfg = PipelineConfig.from_args(ns)
+        cfg = PipelineConfig.from_argparse(
+            parser.parse_args(["--no-search.verbose"])
+        )
         assert cfg.search.verbose is False
 
     def test_nested_path(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args(["--output.directory", "/data/out"])
-        cfg = PipelineConfig.from_args(ns)
+        cfg = PipelineConfig.from_argparse(
+            parser.parse_args(["--output.directory", "/data/out"])
+        )
         assert cfg.output.directory == pathlib.Path("/data/out")
 
     def test_nested_defaults_unchanged(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args([])
-        cfg = PipelineConfig.from_args(ns)
+        cfg = PipelineConfig.from_argparse(parser.parse_args([]))
         assert cfg.search.n_sigma == 5.0
         assert cfg.output.compress is False
 
     def test_nested_multiple_sub_configs(self):
         parser = argparse.ArgumentParser()
         PipelineConfig.add_arguments(parser)
-        ns = parser.parse_args(
-            ["--search.n-sigma", "2.0", "--output.directory", "/tmp"]
+        cfg = PipelineConfig.from_argparse(
+            parser.parse_args(
+                ["--search.n-sigma", "2.0", "--output.directory", "/tmp"]
+            )
         )
-        cfg = PipelineConfig.from_args(ns)
         assert cfg.search.n_sigma == 2.0
         assert cfg.output.directory == pathlib.Path("/tmp")
 
 
+
 # ---------------------------------------------------------------------------
-# from_cli with config file
+# Deep (multi-level) nested configs - argparse and click
 # ---------------------------------------------------------------------------
 
-class TestFromCli:
-    def test_from_cli_yaml_file(self, tmp_path):
+class TestDeepNestedCLI:
+    def test_argparse_deep_override(self):
+        cfg = parse(DeepOuter, ["--middle.inner.value", "9.9"])
+        assert cfg.middle.inner.value == 9.9
+
+    def test_argparse_deep_default_unchanged(self):
+        cfg = parse(DeepOuter, [])
+        assert cfg.middle.inner.value == 1.0
+
+    def test_click_deep_override(self):
+        @click.command()
+        @DeepOuter.click_options()
+        def cmd(**kwargs):
+            cfg = DeepOuter.from_click(kwargs)
+            click.echo(cfg.middle.inner.value)
+
+        result = CliRunner().invoke(cmd, ["--middle.inner.value", "9.9"])
+        assert result.exit_code == 0
+        assert "9.9" in result.output
+
+    def test_click_deep_default_unchanged(self):
+        @click.command()
+        @DeepOuter.click_options()
+        def cmd(**kwargs):
+            cfg = DeepOuter.from_click(kwargs)
+            click.echo(cfg.middle.inner.value)
+
+        result = CliRunner().invoke(cmd, [])
+        assert result.exit_code == 0
+        assert "1.0" in result.output
+
+    def test_argparse_middle_own_field(self):
+        cfg = parse(DeepOuter, ["--middle.y", "7.7"])
+        assert cfg.middle.y == 7.7
+
+    def test_click_middle_own_field(self):
+        @click.command()
+        @DeepOuter.click_options()
+        def cmd(**kwargs):
+            cfg = DeepOuter.from_click(kwargs)
+            click.echo(cfg.middle.y)
+
+        result = CliRunner().invoke(cmd, ["--middle.y", "7.7"])
+        assert result.exit_code == 0
+        assert "7.7" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Mixed flat+nested CLI
+# ---------------------------------------------------------------------------
+
+class TestMixedCLI:
+    def test_argparse_flat_field(self):
+        cfg = parse(MixedCLI, ["--top-val", "42.0"])
+        assert cfg.top_val == 42.0
+
+    def test_argparse_sub_config_field(self):
+        cfg = parse(MixedCLI, ["--inner.value", "5.5"])
+        assert cfg.inner.value == 5.5
+
+    def test_argparse_both_fields(self):
+        cfg = parse(MixedCLI, ["--top-val", "3.0", "--inner.value", "7.0"])
+        assert cfg.top_val == 3.0
+        assert cfg.inner.value == 7.0
+
+    def test_argparse_defaults_unchanged(self):
+        cfg = parse(MixedCLI, [])
+        assert cfg.top_val == 99.0
+        assert cfg.inner.value == 1.0
+
+    def test_click_flat_field(self):
+        @click.command()
+        @MixedCLI.click_options()
+        def cmd(**kwargs):
+            cfg = MixedCLI.from_click(kwargs)
+            click.echo(cfg.top_val)
+
+        result = CliRunner().invoke(cmd, ["--top-val", "42.0"])
+        assert result.exit_code == 0
+        assert "42.0" in result.output
+
+    def test_click_sub_config_field(self):
+        @click.command()
+        @MixedCLI.click_options()
+        def cmd(**kwargs):
+            cfg = MixedCLI.from_click(kwargs)
+            click.echo(cfg.inner.value)
+
+        result = CliRunner().invoke(cmd, ["--inner.value", "5.5"])
+        assert result.exit_code == 0
+        assert "5.5" in result.output
+
+
+# ---------------------------------------------------------------------------
+# from_argparse with config file
+# ---------------------------------------------------------------------------
+
+class TestFromArgparseFile:
+    def test_yaml_file(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
         yaml_file.write_text("n_sigma: 2.5\nmode: balanced\n")
-        cfg = FlatConfig.from_cli(args=[str(yaml_file)])
+        cfg = parse(FlatConfig, [str(yaml_file)])
         assert cfg.n_sigma == 2.5
         assert cfg.mode == "balanced"
 
-    def test_from_cli_yaml_cli_override(self, tmp_path):
-        yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text("n_sigma: 2.5\nmode: balanced\n")
-        cfg = FlatConfig.from_cli(args=[str(yaml_file), "--n-sigma", "9.9"])
-        assert cfg.n_sigma == 9.9
-        assert cfg.mode == "balanced"
-
-    def test_from_cli_toml_file(self, tmp_path):
+    def test_toml_file(self, tmp_path):
         toml_file = tmp_path / "config.toml"
         toml_file.write_text('n_sigma = 7.0\nmode = "thorough"\n')
-        cfg = FlatConfig.from_cli(args=[str(toml_file)])
+        cfg = parse(FlatConfig, [str(toml_file)])
         assert cfg.n_sigma == 7.0
         assert cfg.mode == "thorough"
 
-    def test_from_cli_no_file(self):
-        cfg = FlatConfig.from_cli(args=["--n-sigma", "3.3"])
-        assert cfg.n_sigma == 3.3
-
-    def test_from_cli_no_args(self):
-        cfg = FlatConfig.from_cli(args=[])
-        assert cfg.n_sigma == 5.0
+    def test_cli_overrides_file(self, tmp_path):
+        yaml_file = tmp_path / "config.yaml"
+        yaml_file.write_text("n_sigma: 2.5\nmode: balanced\n")
+        cfg = parse(FlatConfig, [str(yaml_file), "--n-sigma", "9.9"])
+        assert cfg.n_sigma == 9.9
+        assert cfg.mode == "balanced"  # file value kept
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""cfx — lightweight self-documenting configuration classes.
+"""cfx - lightweight self-documenting configuration classes.
 
 Declare typed, validated, and documented configuration fields directly
 on the class that uses them, using Python descriptors::
@@ -21,6 +21,6 @@ on the class that uses them, using Python descriptors::
     cfg2 = SearchConfig.from_dict(d)
 """
 
-from .config_field import *
-from .config import *
-from .types import *
+from .config_field import *  # noqa: F401, F403
+from .config import *  # noqa: F401, F403
+from .types import *  # noqa: F401, F403

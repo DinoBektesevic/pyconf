@@ -138,13 +138,13 @@ class MultiOptions(ConfigField):
         super().__init__(defaultval, doc, static=static, env=env)
 
     def __set__(self, obj, value):  # noqa: D105
-        # Coerce list to set so that a round-trip through YAML/TOML (which
-        # deserializes sequences as lists) does not fail validation.
-        if isinstance(value, list):
+        # Coerce list/tuple to set: YAML/TOML deserializes sequences as lists,
+        # and click's multiple=True returns a tuple.
+        if isinstance(value, (list, tuple)):
             value = set(value)
         super().__set__(obj, value)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         return {item.strip() for item in s.split(",") if item.strip()}
 
     def to_string(self, value):  # noqa: D102
@@ -265,7 +265,7 @@ class Scalar(ConfigField):
         self.maxval = maxval
         super().__init__(default_value, doc, static=static, env=env)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return int(s)
         except ValueError:
@@ -332,7 +332,7 @@ class Int(ConfigField):
         self.maxval = maxval
         super().__init__(default_value, doc, static=static, env=env)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return int(s)
         except ValueError:
@@ -393,7 +393,7 @@ class Float(ConfigField):
         self.maxval = maxval
         super().__init__(default_value, doc, static=static, env=env)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return float(s)
         except ValueError:
@@ -433,7 +433,7 @@ class Bool(ConfigField):
         If the value is not a `bool`.
     """
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         if s.lower() in ("1", "true", "yes", "on"):
             return True
         if s.lower() in ("0", "false", "no", "off"):
@@ -501,7 +501,7 @@ class Path(ConfigField):
         self.validate(value)
         setattr(obj, self.private_name, value)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         return pathlib.Path(s)
 
     def to_string(self, value):  # noqa: D102
@@ -537,7 +537,7 @@ class Seed(ConfigField):
         If the value is not an `int` or `None`.
     """
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         if s.lower() in ("none", "null", ""):
             return None
         try:
@@ -561,7 +561,7 @@ class Range(ConfigField):
 
     Stores a two-element tuple ``(min, max)`` and validates that
     ``min < max``. This field is intentionally limited to linear ranges.
-    Cyclical or angular ranges (e.g. 350° to 10° crossing zero) are out
+    Cyclical or angular ranges (e.g. 350 deg to 10 deg crossing zero) are out
     of scope because their validation depends on domain-specific conventions.
 
     Parameters
@@ -589,7 +589,7 @@ class Range(ConfigField):
             value = tuple(value)
         super().__set__(obj, value)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         parts = s.split(",")
 
         if len(parts) != 2:
@@ -667,7 +667,14 @@ class List(ConfigField):
         self.maxlen = maxlen
         super().__init__(default_value, doc, static=static, env=env)
 
-    def from_string(self, s):
+    def __set__(self, obj, value):  # noqa: D105
+        # Coerce tuple to list so that click's multiple=True (which returns
+        # a tuple) does not fail validation.
+        if isinstance(value, tuple):
+            value = list(value)
+        super().__set__(obj, value)
+
+    def from_string(self, s):  # noqa: D102
         try:
             result = json.loads(s)
             if isinstance(result, list):
@@ -719,7 +726,7 @@ class Dict(ConfigField):
         If the value is not a `dict`.
     """
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return json.loads(s)
         except (json.JSONDecodeError, ValueError):
@@ -754,7 +761,7 @@ class Date(ConfigField):
         If the value is not a `datetime.date`.
     """
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return datetime.date.fromisoformat(s)
         except ValueError:
@@ -799,7 +806,7 @@ class Time(ConfigField):
             value = datetime.time.fromisoformat(value)
         super().__set__(obj, value)
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return datetime.time.fromisoformat(s)
         except ValueError:
@@ -837,7 +844,7 @@ class DateTime(ConfigField):
         If the value is not a `datetime.datetime`.
     """
 
-    def from_string(self, s):
+    def from_string(self, s):  # noqa: D102
         try:
             return datetime.datetime.fromisoformat(s)
         except ValueError:

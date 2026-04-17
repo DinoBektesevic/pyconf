@@ -5,7 +5,6 @@ fields at class-definition time, and `Config`, the base class that all
 user-defined configuration classes inherit from.
 """
 
-import argparse
 import datetime
 import functools
 import pathlib
@@ -13,7 +12,6 @@ import warnings
 
 from .cli import field_to_argparse_kwargs, field_to_click_option
 from .display import as_table, as_inline_string
-from .types import List, MultiOptions
 
 try:
     import yaml
@@ -105,8 +103,8 @@ class ConfigMeta(type):
         if configs is None:
             return conf
         for cfg in reversed(configs):
-            if hasattr(cfg, "defaults"):
-                conf.update(cfg.defaults)
+            if hasattr(cfg, "_fields"):
+                conf.update(cfg._fields)
         return conf
 
     @staticmethod
@@ -147,12 +145,12 @@ class ConfigMeta(type):
                 for comp in reversed(components):
                     nested_classes[comp.confid] = comp
             attrs["_nested_classes"] = nested_classes
-            attrs["defaults"] = {}
+            attrs["_fields"] = cls_fields
         else:
             config = cls._unroll_defaults(bases)
             config.update(cls._unroll_defaults(components))
             config.update(cls_fields)
-            attrs["defaults"] = config
+            attrs["_fields"] = config
             attrs.update(config)
 
         return super().__new__(cls, cls_name, bases, attrs, **kwargs)
@@ -215,7 +213,7 @@ class Config(metaclass=ConfigMeta):
         # Flat/unroll/inherited mode: initialize stored values for non-static,
         # non-callable fields. Callable defaults are left unset so that
         # ConfigField.__get__ can evaluate them lazily on first access.
-        for k, v in self.defaults.items():
+        for k, v in self._fields.items():
             if not isinstance(v, Config) and not getattr(type(self), k).static:
                 if not callable(v.defaultval) and v.env is None:
                     setattr(self, k, v.defaultval)
@@ -262,36 +260,41 @@ class Config(metaclass=ConfigMeta):
         return as_table(self, format="html")
 
     def __setattr__(self, name, value):  # noqa: D105
-        if getattr(self, "_frozen", False) and name in self.defaults:
+        if getattr(self, "_frozen", False) and name in self._fields:
             raise FrozenConfigError(
                 f"Cannot set field {name!r} on a frozen config."
             )
         super().__setattr__(name, value)
 
     def __getitem__(self, key):  # noqa: D105
-        if key not in self.defaults:
+        if key not in self._fields:
             raise KeyError(key)
         return getattr(self, key)
 
     def __setitem__(self, key, value):  # noqa: D105
-        if key not in self.defaults:
+        if key not in self._fields:
             raise KeyError(key)
         setattr(self, key, value)
 
     def __contains__(self, key):  # noqa: D105
-        return key in self.defaults
+        return key in self._fields or key in getattr(type(self), "_nested_classes", {})
 
     def __eq__(self, other):  # noqa: D105
         if not isinstance(other, Config):
             return NotImplemented
-        return dict(self.items()) == dict(other.items())
+        if dict(self.items()) != dict(other.items()):
+            return False
+        nested_classes = getattr(type(self), "_nested_classes", {})
+        return all(
+            getattr(self, c) == getattr(other, c) for c in nested_classes
+        )
 
     ###########################################################################
     #                    Dict/Set-like methods
     ###########################################################################
     def keys(self):
         """Return a set-like object providing a view on the dict's keys."""
-        return self.defaults.keys()
+        return self._fields.keys()
 
     def values(self):
         """Return the current values of all declared fields.
@@ -330,7 +333,7 @@ class Config(metaclass=ConfigMeta):
             If any key in ``mapping`` is not a declared field.
         """
         for k, v in mapping.items():
-            if k not in self.defaults:
+            if k not in self._fields:
                 raise KeyError(k)
             setattr(self, k, v)
 
@@ -476,28 +479,22 @@ class Config(metaclass=ConfigMeta):
             If ``strict`` is `True` and ``mapping`` contains an undeclared
             field name.
         """
-        # Nested composition mode: route each sub-dict to its component class.
         nested_classes = getattr(cls, "_nested_classes", {})
-        if nested_classes:
-            instance = cls.__new__(cls)
-            for confid, sub_cls in nested_classes.items():
-                sub_dict = mapping.get(confid, {})
-                object.__setattr__(
-                    instance,
-                    confid,
-                    sub_cls.from_dict(sub_dict, strict=strict)
-                )
-            instance.validate()
-            return instance
-
-        instance = cls.__new__(cls)
+        instance = cls()
         for k, v in mapping.items():
-            if k not in instance.defaults:
+            if k in nested_classes:
+                continue
+            if k not in cls._fields:
                 if strict:
                     raise KeyError(f"Unknown field {k!r} for {cls.__name__!r}")
                 continue
             if not getattr(cls, k).static:
                 setattr(instance, k, v)
+        for confid, sub_cls in nested_classes.items():
+            sub_dict = mapping.get(confid, {})
+            object.__setattr__(
+                instance, confid, sub_cls.from_dict(sub_dict, strict=strict)
+            )
         instance.validate()
         return instance
 
@@ -518,14 +515,7 @@ class Config(metaclass=ConfigMeta):
             The serialized value is a computed snapshot; the formula is lost
             after deserialization.
         """
-        # Nested composition mode: iterate sub-configs by confid.
         nested_classes = getattr(type(self), "_nested_classes", {})
-        if nested_classes:
-            return {
-                confid: getattr(self, confid).to_dict()
-                for confid in nested_classes
-            }
-
         result = {}
         for k in self.keys():
             descriptor = getattr(type(self), k)
@@ -537,8 +527,9 @@ class Config(metaclass=ConfigMeta):
                     UserWarning,
                     stacklevel=2,
                 )
-            v = getattr(self, k)
-            result[k] = self._serialize_value(v)
+            result[k] = self._serialize_value(getattr(self, k))
+        for confid in nested_classes:
+            result[confid] = getattr(self, confid).to_dict()
         return result
 
     @classmethod
@@ -638,7 +629,7 @@ class Config(metaclass=ConfigMeta):
             )
         # TOML has no null type. Strip None values so tomli_w doesn't raise.
         # Fields with None values will be absent from the TOML output and will
-        # fall back to their class-level default when loaded — which is correct
+        # fall back to their class-level default when loaded - which is correct
         # for fields like Seed(None, ...) where None is the intended default.
         # Now, since this is a config and not a generic data structure that
         # needs to persist values/collections and whatnot, I'm hoping this is
@@ -651,12 +642,12 @@ class Config(metaclass=ConfigMeta):
     ###########################################################################
     @classmethod
     def add_arguments(cls, parser, prefix=""):
-        """Register all non-static fields as arguments on *parser*.
+        """Register all non-static fields as arguments on parser.
 
         For nested configs the component's ``confid`` is used as the
         dot-notation prefix: field ``n_sigma`` in a sub-config with
         ``confid = "search"`` becomes ``--search.n-sigma``.
-        An explicit *prefix* overrides the automatic one, which is useful
+        An explicit prefix overrides the automatic one, which is useful
         when composing multiple configs into a shared parser manually.
 
         Parameters
@@ -667,19 +658,59 @@ class Config(metaclass=ConfigMeta):
             Dot-separated prefix prepended to every flag name. Default ``""``.
         """
         nested_classes = getattr(cls, "_nested_classes", {})
-        for name, descriptor in cls.defaults.items():
+
+        if not prefix:
+            parser.add_argument(
+                "config_file", nargs="?", default=None,
+                help=(
+                    "Optional YAML or TOML config file. "
+                    "CLI flags override file values."
+                ),
+            )
+
+        for name, descriptor in cls._fields.items():
             if descriptor.static:
                 continue
+
             info = field_to_argparse_kwargs(name, descriptor, prefix=prefix)
             flag = info.pop("flag")
             parser.add_argument(flag, **info)
+
         for confid, sub_cls in nested_classes.items():
             sub_prefix = f"{prefix}.{confid}" if prefix else confid
             sub_cls.add_arguments(parser, prefix=sub_prefix)
 
+    @staticmethod
+    def _apply_params(instance, params):
+        for key, value in params.items():
+            # None means the flag was not supplied; keep the base value.
+            if value is None:
+                continue
+            # Walk the dot path to find the target config and field name.
+            if "." in key:
+                parts = key.split(".")
+                tgtconf = instance
+                for part in parts[:-1]:
+                    tgtconf = getattr(tgtconf, part)
+                field = parts[-1]
+            else:
+                field = key
+                tgtconf = instance
+            # Override the value if the field exists and is not static.
+            # Unknown keys (f.e. config_file) are silently skipped.
+            descriptor = getattr(type(tgtconf), field, None)
+            if descriptor is None or getattr(descriptor, "static", False):
+                continue
+            setattr(tgtconf, field, value)
+
     @classmethod
-    def from_args(cls, namespace):
-        """Build a `Config` instance from a parsed argparse *namespace*.
+    def from_argparse(cls, namespace):
+        """Build a `Config` instance from a parsed argparse namespace.
+
+        If the namespace contains a ``config_file`` value (registered by
+        ``add_arguments``), that file is loaded first and CLI flags are
+        applied on top. Without a config file, class-level defaults are
+        used as the base.
 
         Parameters
         ----------
@@ -690,99 +721,33 @@ class Config(metaclass=ConfigMeta):
         -------
         cfg : `Config`
             A new instance with values taken from the namespace. Fields
-            absent from the namespace (value ``None``) keep their class-level
+            absent from the namespace (value ``None``) keep their base
             defaults.
         """
         params = vars(namespace)
-        instance = cls.__new__(cls)
-        nested_classes = getattr(cls, "_nested_classes", {})
-        # Initialize nested sub-configs.
-        for confid, sub_cls in nested_classes.items():
-            object.__setattr__(instance, confid, sub_cls())
-        # Initialize flat fields from class defaults.
-        for k, descriptor in cls.defaults.items():
-            if not descriptor.static and not callable(descriptor.defaultval):
-                setattr(instance, k, descriptor.defaultval)
-        # Apply values from the namespace.
-        for key, value in params.items():
-            if key == "_config_file" or value is None:
-                continue
-            if "." in key:
-                confid, field = key.split(".", 1)
-                if confid in nested_classes:
-                    sub = getattr(instance, confid)
-                    descriptor = getattr(type(sub), field, None)
-                    if isinstance(descriptor, MultiOptions):
-                        value = set(value)
-                    setattr(sub, field, value)
-            else:
-                descriptor = getattr(type(instance), key, None)
-                if descriptor is not None and not getattr(descriptor, "static", False):
-                    if isinstance(descriptor, MultiOptions):
-                        value = set(value)
-                    setattr(instance, key, value)
-        return instance
+        instance = cls()
 
-    @classmethod
-    def from_cli(cls, parser=None, args=None):
-        """Parse ``sys.argv`` and return a populated `Config` instance.
-
-        Accepts an optional positional ``config_file`` argument (YAML or
-        TOML). The file is loaded first; explicit CLI flags override its
-        values.
-
-        Parameters
-        ----------
-        parser : `argparse.ArgumentParser` or `None`, optional
-            Parser to add arguments to. A new one is created when `None`.
-        args : `list[str]` or `None`, optional
-            Argument list to parse. Defaults to ``sys.argv[1:]`` when `None`.
-
-        Returns
-        -------
-        cfg : `Config`
-            A new instance with values from the config file (if given) and
-            any CLI overrides applied on top.
-        """
-        if parser is None:
-            parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "config_file", nargs="?", default=None,
-            help=(
-                "Optional path to a YAML or TOML config file. "
-                "CLI flags override file values."
-            ),
-        )
-        cls.add_arguments(parser)
-        namespace = parser.parse_args(args)
-        config_file = namespace.config_file
+        # If provided, load config from file
+        config_file = params.get("config_file")
         if config_file is not None:
             p = pathlib.Path(config_file)
             if p.suffix in (".yaml", ".yml"):
                 instance = cls.from_yaml(p.read_text())
             else:
                 instance = cls.from_toml(p.read_text())
-            # Apply CLI overrides on top of the file-loaded instance.
-            nested_classes = getattr(cls, "_nested_classes", {})
-            for key, value in vars(namespace).items():
-                if key == "config_file" or value is None:
-                    continue
-                if "." in key:
-                    confid, field = key.split(".", 1)
-                    if confid in nested_classes:
-                        sub = getattr(instance, confid)
-                        descriptor = getattr(type(sub), field, None)
-                        if isinstance(descriptor, MultiOptions):
-                            value = set(value)
-                        setattr(sub, field, value)
-                else:
-                    descriptor = getattr(type(instance), key, None)
-                    if descriptor is not None and not getattr(descriptor, "static", False):
-                        if isinstance(descriptor, MultiOptions):
-                            value = set(value)
-                        setattr(instance, key, value)
-            return instance
-        return cls.from_args(namespace)
+
+        # Apply CLI overrides on top
+        cls._apply_params(instance, params)
+        return instance
+
+    @classmethod
+    def _collect_click_options(cls, prefix=""):
+        for name, descriptor in cls._fields.items():
+            if not descriptor.static:
+                yield field_to_click_option(name, descriptor, prefix=prefix)
+        for confid, sub_cls in getattr(cls, "_nested_classes", {}).items():
+            sub_prefix = f"{prefix}.{confid}" if prefix else confid
+            yield from sub_cls._collect_click_options(sub_prefix)
 
     @classmethod
     def click_options(cls):
@@ -813,17 +778,11 @@ class Config(metaclass=ConfigMeta):
                 "click is required for click_options(). "
                 "Install it with: pip install click"
             )
-        options = []
-        nested_classes = getattr(cls, "_nested_classes", {})
-        for name, descriptor in cls.defaults.items():
-            if descriptor.static:
-                continue
-            options.append(field_to_click_option(name, descriptor))
-        for confid, sub_cls in nested_classes.items():
-            for name, descriptor in sub_cls.defaults.items():
-                if descriptor.static:
-                    continue
-                options.append(field_to_click_option(name, descriptor, prefix=confid))
+        config_file_option = click.option(
+            "--config-file", default=None,
+            help="Optional YAML or TOML config file. Other flags override file values.",
+        )
+        options = [config_file_option, *cls._collect_click_options()]
 
         def decorator(func):
             return functools.reduce(lambda f, o: o(f), reversed(options), func)
@@ -851,35 +810,19 @@ class Config(metaclass=ConfigMeta):
         cfg : `Config`
             A new instance with all non-``None`` param values applied.
         """
-        instance = cls.__new__(cls)
-        nested_classes = getattr(cls, "_nested_classes", {})
-        # Initialize nested sub-configs and flat defaults.
-        for confid, sub_cls in nested_classes.items():
-            object.__setattr__(instance, confid, sub_cls())
-        for k, descriptor in cls.defaults.items():
-            if not descriptor.static and not callable(descriptor.defaultval):
-                setattr(instance, k, descriptor.defaultval)
-        for key, value in params.items():
-            if value is None or (isinstance(value, tuple) and len(value) == 0):
-                continue
-            # Double underscores encode dots in param names.
-            display_key = key.replace("__", ".", 1)
-            if "." in display_key:
-                confid, field = display_key.split(".", 1)
-                if confid in nested_classes:
-                    sub = getattr(instance, confid)
-                    descriptor = getattr(type(sub), field, None)
-                    if isinstance(descriptor, MultiOptions):
-                        value = set(value)
-                    elif isinstance(descriptor, List):
-                        value = list(value)
-                    setattr(sub, field, value)
+        instance = cls()
+
+        # Double underscores encode dots in click param names; translate before routing.
+        renamed = {k.replace("__", "."): v for k, v in params.items()}
+
+        # Load from file if provided, otherwise start from class defaults.
+        config_file = renamed.pop("config-file", None)
+        if config_file is not None:
+            p = pathlib.Path(config_file)
+            if p.suffix in (".yaml", ".yml"):
+                instance = cls.from_yaml(p.read_text())
             else:
-                descriptor = getattr(type(instance), key, None)
-                if descriptor is not None and not getattr(descriptor, "static", False):
-                    if isinstance(descriptor, MultiOptions):
-                        value = set(value)
-                    elif isinstance(descriptor, List):
-                        value = list(value)
-                    setattr(instance, key, value)
+                instance = cls.from_toml(p.read_text())
+
+        cls._apply_params(instance, renamed)
         return instance

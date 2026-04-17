@@ -2,10 +2,17 @@
 
 import pytest
 
-from cfx import Config, ConfigField, FrozenConfigError, Int, Float, String, Options
+from cfx import Config, FrozenConfigError, Int
 from .conftest import (
-    BaseConfig, ExtrasConfig, ChildConfig, GrandchildConfig,
-    IndependentConfig, CompoundConfig, NestedConfig,
+    BaseConfig,
+    ChildConfig,
+    GrandchildConfig,
+    CompoundConfig,
+    NestedConfig,
+    DeepInnerConfig,
+    DeepMiddleConfig,
+    DeepOuterConfig,
+    MixedConfig,
 )
 
 
@@ -34,7 +41,9 @@ class TestConfid:
 
 class TestConfigMethods:
     def test_keys(self, base):
-        assert set(base.keys()) == {"field1", "field2", "field3", "field4", "field5", "field6", "seed"}
+        assert set(base.keys()) == {
+            "field1", "field2", "field3", "field4", "field5", "field6", "seed"
+        }
 
     def test_values_returns_defaults(self, base):
         assert base.field1 == "a"
@@ -254,7 +263,10 @@ class TestInheritance:
 
     def test_grandchild_has_all_ancestor_fields(self):
         g = GrandchildConfig()
-        for f in ("field1", "field2", "field3", "field4", "field5", "field6", "field17"):
+        for f in (
+            "field1", "field2", "field3",
+            "field4", "field5", "field6", "field17"
+        ):
             assert f in g
 
     def test_parent_unaffected_by_child_override(self):
@@ -268,13 +280,13 @@ class TestInheritance:
 class TestCompoundComposition:
     def test_compound_has_fields_from_all_components(self):
         c = CompoundConfig()
-        assert "field1" in c   # from both; IndependentConfig wins (first in list)
+        assert "field1" in c   # IndependentConfig wins (listed first)
         assert "field17" in c  # from GrandchildConfig
         assert "field18" in c  # from IndependentConfig only
 
     def test_compound_field1_is_int_from_independent(self):
-        # IndependentConfig.field1 is Int(99); GrandchildConfig.field1 is String
-        # IndependentConfig is listed first so its field1 should win
+        # IndependentConfig.field1 is Int(99); GrandchildConfig.field1 is
+        # String. IndependentConfig listed first so its field1 wins.
         c = CompoundConfig()
         assert isinstance(c.field1, int)
         assert c.field1 == 99
@@ -318,7 +330,7 @@ class TestNestedComposition:
 
     def test_nested_sub_configs_printable(self):
         n = NestedConfig()
-        # sub-configs are full Config instances — they should print fine
+        # sub-configs are full Config instances - they should print fine
         s = str(n.independent)
         assert "field1" in s
 
@@ -331,3 +343,136 @@ class TestNestedComposition:
     def test_nested_str_shows_sub_config_summary(self):
         s = str(NestedConfig())
         assert "independent" in s
+
+
+# ---------------------------------------------------------------------------
+# Multi-level nested composition
+# ---------------------------------------------------------------------------
+
+class TestDeepNested:
+    def test_construction(self):
+        cfg = DeepOuterConfig()
+        assert cfg.middle.inner.x == 1.0
+
+    def test_assignment(self):
+        cfg = DeepOuterConfig()
+        cfg.middle.inner.x = 9.9
+        assert cfg.middle.inner.x == 9.9
+
+    def test_instances_are_independent(self):
+        c1 = DeepOuterConfig()
+        c2 = DeepOuterConfig()
+        c1.middle.inner.x = 9.9
+        assert c2.middle.inner.x == 1.0
+
+    def test_to_dict_structure(self):
+        d = DeepOuterConfig().to_dict()
+        assert "middle" in d
+        assert "inner" in d["middle"]
+        assert d["middle"]["inner"]["x"] == 1.0
+
+    def test_from_dict_round_trip(self):
+        cfg = DeepOuterConfig()
+        cfg.middle.inner.x = 9.9
+        rt = DeepOuterConfig.from_dict(cfg.to_dict())
+        assert rt.middle.inner.x == 9.9
+
+    def test_str(self):
+        s = str(DeepOuterConfig())
+        assert "middle" in s
+
+    def test_middle_has_own_field(self):
+        cfg = DeepOuterConfig()
+        assert cfg.middle.y == 2.0
+
+    def test_middle_to_dict_includes_own_field(self):
+        d = DeepOuterConfig().to_dict()
+        assert d["middle"]["y"] == 2.0
+        assert d["middle"]["inner"]["x"] == 1.0
+
+    def test_middle_from_dict_round_trip(self):
+        cfg = DeepOuterConfig()
+        cfg.middle.y = 7.7
+        cfg.middle.inner.x = 9.9
+        rt = DeepOuterConfig.from_dict(cfg.to_dict())
+        assert rt.middle.y == 7.7
+        assert rt.middle.inner.x == 9.9
+
+
+# ---------------------------------------------------------------------------
+# Mixed flat+nested composition
+# ---------------------------------------------------------------------------
+
+class TestMixedConfig:
+    def test_flat_field_accessible(self):
+        cfg = MixedConfig()
+        assert cfg.top_field == 99.0
+
+    def test_sub_config_accessible(self):
+        cfg = MixedConfig()
+        assert cfg.inner.x == 1.0
+
+    def test_contains_flat_key(self):
+        cfg = MixedConfig()
+        assert "top_field" in cfg
+
+    def test_contains_confid(self):
+        cfg = MixedConfig()
+        assert "inner" in cfg
+
+    def test_to_dict_structure(self):
+        d = MixedConfig().to_dict()
+        assert d["top_field"] == 99.0
+        assert d["inner"]["x"] == 1.0
+
+    def test_from_dict_round_trip(self):
+        cfg = MixedConfig()
+        cfg.top_field = 42.0
+        cfg.inner.x = 5.5
+        rt = MixedConfig.from_dict(cfg.to_dict())
+        assert rt.top_field == 42.0
+        assert rt.inner.x == 5.5
+
+    def test_eq_equal_instances(self):
+        assert MixedConfig() == MixedConfig()
+
+    def test_eq_different_flat_field(self):
+        a = MixedConfig()
+        b = MixedConfig()
+        b.top_field = 1.0
+        assert a != b
+
+    def test_eq_different_sub_config(self):
+        a = MixedConfig()
+        b = MixedConfig()
+        b.inner.x = 9.9
+        assert a != b
+
+    def test_copy_preserves_flat_and_sub(self):
+        cfg = MixedConfig()
+        cfg.top_field = 3.0
+        cfg.inner.x = 7.0
+        c = cfg.copy()
+        assert c.top_field == 3.0
+        assert c.inner.x == 7.0
+
+    def test_copy_is_independent(self):
+        cfg = MixedConfig()
+        c = cfg.copy()
+        c.top_field = 1.0
+        c.inner.x = 1.0
+        assert cfg.top_field == 99.0
+        assert cfg.inner.x == 1.0
+
+    def test_str_has_flat_field_and_sub_section(self):
+        s = str(MixedConfig())
+        assert "top_field" in s
+        assert "inner" in s
+
+    def test_instances_are_independent(self):
+        c1 = MixedConfig()
+        c2 = MixedConfig()
+        c1.top_field = 0.0
+        c1.inner.x = 0.0
+        assert c2.top_field == 99.0
+        assert c2.inner.x == 1.0

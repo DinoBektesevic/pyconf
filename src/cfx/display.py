@@ -12,7 +12,7 @@ textwrap_cell, textwrap_row
 wrap_cell, wrap_row
     HTML tag helpers with optional attribute support.
 make_table
-    Unified table builder — produces either a fixed-width text table or an
+    Unified table builder - produces either a fixed-width text table or an
     HTML ``<table>`` from a list of ``(name, value, doc)`` rows.
 as_table
     Full config renderer for ``__str__`` (format ``"text"``) and
@@ -178,10 +178,13 @@ def table_rows(cfg):
     -------
     rows: `list[tuple]`
     """
-    return [
-        (k, getattr(type(cfg), k).to_string(getattr(cfg, k)), getattr(type(cfg), k).doc)
-        for k in cfg.keys()
-    ]
+    rows = []
+    for key, value in cfg.items():
+        # to_string is a staticmethod defined on ConfigField so just fetch it
+        field = getattr(type(cfg), key)
+        fmtstr = field.to_string(value)
+        rows.append((key, fmtstr, field.doc))
+    return rows
 
 
 def make_table(rows, format="text", max_key_width=20, max_value_width=25,
@@ -207,7 +210,7 @@ def make_table(rows, format="text", max_key_width=20, max_value_width=25,
     Returns
     -------
     table: `str`
-        Fixed-width text table or ``<table>…</table>`` HTML string.
+        Fixed-width text table or ``<table>...</table>`` HTML string.
     """
     if format == "html":
         header_row = wrap_row([
@@ -267,25 +270,23 @@ def as_table(cfg, format="text"):
 
     if format == "html":
         doc_html = f"<p>{doc.strip()}</p>" if doc else ""
-        if nested_classes:
-            sub_html = "".join(
-                as_table(getattr(cfg, confid), format="html")
-                for confid in nested_classes
-            )
-            return f"<b>{title}</b>{doc_html}{sub_html}"
-        return f"<b>{title}</b>{doc_html}" + make_table(table_rows(cfg), format="html")  # noqa: E501
+        parts = []
+        if cfg._fields:
+            parts.append(make_table(table_rows(cfg), format="html"))
+        for confid in nested_classes:
+            parts.append(as_table(getattr(cfg, confid), format="html"))
+        return f"<b>{title}</b>{doc_html}" + "".join(parts)
 
     # text mode
     header = f"{title}:"
     if doc:
         header += f"\n{doc.strip()}"
-    if nested_classes:
-        sub_tables = "\n\n".join(
-            f"[{confid}]\n{as_table(getattr(cfg, confid), format='text')}"
-            for confid in nested_classes
-        )
-        return header + "\n" + sub_tables
-    return header + "\n" + make_table(table_rows(cfg), format="text")
+    parts = []
+    if cfg._fields:
+        parts.append(make_table(table_rows(cfg), format="text"))
+    for confid in nested_classes:
+        parts.append(f"[{confid}]\n{as_table(getattr(cfg, confid), format='text')}")
+    return header + "\n" + "\n\n".join(parts)
 
 
 def as_inline_string(cfg):
@@ -302,11 +303,6 @@ def as_inline_string(cfg):
         Single-line representation of a config.
     """
     nested_classes = getattr(type(cfg), "_nested_classes", {})
-    if nested_classes:
-        pairs = ", ".join(
-            f"{confid}={as_inline_string(getattr(cfg, confid))}"
-            for confid in nested_classes
-        )
-    else:
-        pairs = ", ".join(f"{k}={getattr(cfg, k)!r}" for k in cfg.keys())
-    return f"{type(cfg).__name__}({pairs})"
+    parts = [f"{k}={getattr(cfg, k)!r}" for k in cfg.keys()]
+    parts += [f"{c}={as_inline_string(getattr(cfg, c))}" for c in nested_classes]
+    return f"{type(cfg).__name__}({', '.join(parts)})"

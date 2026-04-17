@@ -26,7 +26,7 @@ docs = [
     "numpydoc",
     "sphinx-rtd-theme",
 ]
-dev = ["cfg[test,docs]", "flake8"]
+dev = ["cfx[test,docs]", "flake8", "towncrier"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -35,3 +35,35 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.towncrier]
+package = "cfx"
+package_dir = "src"
+filename = "CHANGELOG.md"
+directory = "changelog"
+issue_format = "https://github.com/DinoBektesevic/pyconf/issues/{issue}"
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "trivial"
+name = "Internal"
+showcontent = false

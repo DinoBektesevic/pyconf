@@ -43,7 +43,7 @@ class ConfigField:
         been stored on the instance. When set, the priority chain is:
         explicit assignment > environment variable > default. The raw string
         from ``os.environ`` is coerced by `_from_env_str` and then validated.
-        The env value is not stored on the instance — it is re-read on
+        The env value is not stored on the instance - it is re-read on
         every access, matching the behaviour of callable defaults. ``None``
         means no environment variable is consulted. Default is `None`.
 
