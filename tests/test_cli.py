@@ -394,7 +394,7 @@ class TestFromArgparseFile:
     def test_nested_yaml_file_with_cli_override(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
         yaml_file.write_text("search:\n  n_sigma: 1.5\n")
-        cfg = parse(PipelineConfig, [str(yaml_file), "--search.n-sigma", "9.0"])
+        cfg = parse(PipelineConfig, [str(yaml_file), "--search.n-sigma", "9.0"])  # noqa: E501
         assert cfg.search.n_sigma == 9.0
 
 

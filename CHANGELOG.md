@@ -1,3 +1,38 @@
+# cfx 0.2.1 (2026-04-17)
+
+## Bug Fixes
+
+- Composing two components with the same ``confid`` now raises ``ValueError``
+  at class-definition time instead of silently dropping the first component.
+- ``Int`` and ``Float`` fields now reject ``bool`` values. Previously
+  ``True``/``False`` were silently accepted as ``1``/``0`` because ``bool``
+  is a subclass of ``int`` in Python. This was inconsistent with ``Bool``,
+  which explicitly rejects integers.
+- ``Path.validate()`` now raises ``TypeError`` for non-``Path`` values instead
+  of silently returning. ``Path.__init__`` also now normalizes string defaults
+  to ``pathlib.Path`` at field-definition time, consistent with the pattern
+  described for custom fields.
+- ``cfg["confid"]`` now returns the nested sub-config object, fixing a broken
+  dict-like contract where ``"source" in cfg`` could be ``True`` but
+  ``cfg["source"]`` raised ``KeyError``.
+
+## Documentation
+
+- Documentation improvements: added sharp-edges entries for TOML dropping
+  ``None`` values and ``List.from_string`` silent JSON fallback; documented
+  ``validate()`` call timing; added ``Options``/``MultiOptions`` parameter
+  order note; added "which mode to use" guidance to composition page; added
+  intro sentences to serialization, using, sharp-edges, and CLI pages; added
+  YAML output example and CLI dot-notation mapping table. Landing page title
+  and subtitle styling added via ``custom.css``.
+
+## Internal
+
+- Added ``tests/test_display.py`` covering the display module, plus regression
+  tests for the four bug fixes and env-var precedence, nested file loading,
+  and ``_repr_html_``.
+
+
 # cfx 0.2.0 (2026-04-17)
 
 ## Features

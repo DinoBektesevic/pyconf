@@ -1,6 +1,5 @@
 """Tests for Config class methods, composition, and serialization."""
 
-import os
 import pytest
 
 from cfx import Config, FrozenConfigError, Int, Float, String
