@@ -366,7 +366,7 @@ def as_table(cfg, format="text", table_attrs=None):
 
     if format == "html":
         tree_html = f"<pre>{config_tree(cfg)}</pre>"
-        return tree_html + make_table(rows, format="html", table_attrs=table_attrs)
+        return tree_html + make_table(rows, format="html", table_attrs=table_attrs)  # noqa: E501
 
     # text mode: compute actual column widths first so the tree can wrap
     # to the same total width as the table.
