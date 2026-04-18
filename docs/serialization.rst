@@ -3,9 +3,9 @@ Serialization
 
 Configs can be persisted to a dict, YAML, or TOML.  Choose based on context:
 
-- **dict** — programmatic use, in-process transfer
-- **YAML** — human-readable files, easy to hand-edit
-- **TOML** — structured config files with strong typing
+- **dict** - programmatic use, in-process transfer
+- **YAML** - human-readable files, easy to hand-edit
+- **TOML** - structured config files with strong typing
 
 
 dict
@@ -18,7 +18,7 @@ to and from a plain Python dict.  ``from_dict`` calls
     d    = cfg.to_dict()
     cfg2 = ProcessingConfig.from_dict(d)
 
-Pass ``strict=False`` to silently ignore unknown keys — useful when loading
+Pass ``strict=False`` to silently ignore unknown keys - useful when loading
 config files written by an older version of your code::
 
     cfg3 = ProcessingConfig.from_dict(saved_dict, strict=False)
@@ -51,7 +51,7 @@ TOML
 ----
 
 TOML round-trips require ``tomli-w`` to write and ``tomllib`` (stdlib,
-Python ≥ 3.11) or ``tomli`` to read::
+Python >= 3.11) or ``tomli`` to read::
 
     toml_str = cfg.to_toml()                           # pip install tomli-w
     cfg5     = ProcessingConfig.from_toml(toml_str)    # tomllib or tomli

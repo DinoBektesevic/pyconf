@@ -8,7 +8,6 @@ directly on `Config` class definitions. Subclass `ConfigField` and override
 
 import os
 
-
 __all__ = ["ConfigField"]
 
 
@@ -67,13 +66,28 @@ class ConfigField:
     'something else'
     """
 
-    def __init__(self, default_value, doc, static=False, env=None):  # noqa: D107, E501
+    def __init__(
+        self,
+        default_value,
+        doc,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.defaultval = default_value
         self.doc = doc
         self.static = static
         self.env = env
+        self._transient = transient
         if not callable(default_value):
             self.validate(default_value)
+
+    @property
+    def transient(self):
+        """True when the field is skipped on serialization if no value stored."""  # noqa: E501
+        if self._transient is None:
+            return callable(self.defaultval)
+        return self._transient
 
     ###########################################################################
     #                The may-need-to-be-reimplemented methods
@@ -147,7 +161,7 @@ class ConfigField:
     ###########################################################################
     #                Dunder methods
     ###########################################################################
-    def __repr__(self):  # noqa: D105
+    def __repr__(self):
         env_part = f", env={self.env!r}" if self.env is not None else ""
         return (
             f"{self.__class__.__name__}("
@@ -157,7 +171,7 @@ class ConfigField:
             f"{env_part})"
         )
 
-    def __str__(self):  # noqa: D105
+    def __str__(self):
         env_part = f", env={self.env!r}" if self.env is not None else ""
         return (
             f"{self.__class__.__name__}("

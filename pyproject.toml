@@ -19,14 +19,14 @@ yaml = ["pyyaml"]
 toml = ["tomli-w"]
 click = ["click"]
 all = ["pyyaml", "tomli-w", "click"]
-test = ["pytest", "flake8", "pyyaml", "tomli-w", "click"]
+test = ["pytest", "ruff", "pyyaml", "tomli-w", "click"]
 docs = [
     "sphinx",
     "sphinx-autoapi",
     "numpydoc",
     "furo",
 ]
-dev = ["cfx[test,docs]", "flake8", "towncrier"]
+dev = ["cfx[test,docs]", "ruff", "towncrier"]
 
 [project.urls]
 Homepage = "https://github.com/DinoBektesevic/cfx"
@@ -41,6 +41,23 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 79
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # Pyflakes
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "I",    # isort
+]
+
+[tool.ruff.format]
+line-ending = "lf"
 
 [tool.towncrier]
 package = "cfx"

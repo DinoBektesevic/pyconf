@@ -81,8 +81,10 @@ def textwrap_row(row, max_widths):
     wrapped: `list[list[str]]`
         One list-of-lines per column.
     """
-    return [textwrap_cell(str(row[i]), max_widths[i])
-            for i in range(len(max_widths))]
+    return [
+        textwrap_cell(str(row[i]), max_widths[i])
+        for i in range(len(max_widths))
+    ]
 
 
 def wrap_cell(content, tag="td", attrs=None):
@@ -175,6 +177,7 @@ def fmt_text_row(wrapped_cells, widths):
 #                            Printers
 #############################################################################
 
+
 def table_rows(cfg):
     """Extract ``(field_name, current_value, doc)`` tuples from *cfg*.
 
@@ -259,17 +262,24 @@ def config_tree(cfg, width=79, _cont="", _branch=""):
         result.append(f"{_cont}{line}" if line.strip() else _cont.rstrip())
 
     for i, confid in enumerate(nested):
-        is_last = (i == len(nested) - 1)
+        is_last = i == len(nested) - 1
         child_branch = _cont + ("└─ " if is_last else "├─ ")
         child_cont = _cont + ("    " if is_last else "│   ")
-        result.append(config_tree(
-            getattr(cfg, confid), width, child_cont, child_branch
-        ))
+        result.append(
+            config_tree(getattr(cfg, confid), width, child_cont, child_branch)
+        )
     return "\n".join(result)
 
 
-def make_table(rows, format="text", max_config_width=25, max_key_width=20,
-               max_value_width=25, max_desc_width=50, table_attrs=None):
+def make_table(
+    rows,
+    format="text",
+    max_config_width=25,
+    max_key_width=20,
+    max_value_width=25,
+    max_desc_width=50,
+    table_attrs=None,
+):
     """Format ``(config, name, value, doc)`` rows as a text or HTML table.
 
     Parameters
@@ -298,19 +308,23 @@ def make_table(rows, format="text", max_config_width=25, max_key_width=20,
         Fixed-width text table or ``<table>...</table>`` HTML string.
     """
     if format == "html":
-        header_row = wrap_row([
-            wrap_cell("Config",      tag="th"),
-            wrap_cell("Key",         tag="th"),
-            wrap_cell("Value",       tag="th"),
-            wrap_cell("Description", tag="th"),
-        ])
+        header_row = wrap_row(
+            [
+                wrap_cell("Config", tag="th"),
+                wrap_cell("Key", tag="th"),
+                wrap_cell("Value", tag="th"),
+                wrap_cell("Description", tag="th"),
+            ]
+        )
         body = "".join(
-            wrap_row([
-                wrap_cell(f"<code>{cfg}</code>"),
-                wrap_cell(f"<code>{k}</code>"),
-                wrap_cell(f"<code>{v}</code>"),
-                wrap_cell(d),
-            ])
+            wrap_row(
+                [
+                    wrap_cell(f"<code>{cfg}</code>"),
+                    wrap_cell(f"<code>{k}</code>"),
+                    wrap_cell(f"<code>{v}</code>"),
+                    wrap_cell(d),
+                ]
+            )
             for cfg, k, v, d in rows
         )
         attr_str = ""
@@ -322,8 +336,12 @@ def make_table(rows, format="text", max_config_width=25, max_key_width=20,
 
     # text mode
     header = ("Config", "Key", "Value", "Description")
-    max_widths = (max_config_width, max_key_width, max_value_width,
-                  max_desc_width)
+    max_widths = (
+        max_config_width,
+        max_key_width,
+        max_value_width,
+        max_desc_width,
+    )
     wrapped_header = textwrap_row(header, max_widths)
     wrapped_rows = [textwrap_row(r, max_widths) for r in rows]
     all_wrapped = [wrapped_header] + wrapped_rows
@@ -366,7 +384,9 @@ def as_table(cfg, format="text", table_attrs=None):
 
     if format == "html":
         tree_html = f"<pre>{config_tree(cfg)}</pre>"
-        return tree_html + make_table(rows, format="html", table_attrs=table_attrs)  # noqa: E501
+        return tree_html + make_table(
+            rows, format="html", table_attrs=table_attrs
+        )  # noqa: E501
 
     # text mode: compute actual column widths first so the tree can wrap
     # to the same total width as the table.
@@ -399,6 +419,8 @@ def as_inline_string(cfg):
         Single-line representation of a config.
     """
     nested_classes = getattr(type(cfg), "_nested_classes", {})
-    parts = [f"{k}={getattr(cfg, k)!r}" for k in cfg.keys()]
-    parts += [f"{c}={as_inline_string(getattr(cfg, c))}" for c in nested_classes]  # noqa: E501
+    parts = [f"{k}={getattr(cfg, k)!r}" for k in cfg]
+    parts += [
+        f"{c}={as_inline_string(getattr(cfg, c))}" for c in nested_classes
+    ]  # noqa: E501
     return f"{type(cfg).__name__}({', '.join(parts)})"

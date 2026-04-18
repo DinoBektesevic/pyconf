@@ -294,8 +294,12 @@ in a different config without being rewritten::
 
      exponential_backoff(0.5, 2)
 
+Callable defaults are skipped during serialization when no explicit value has
+been stored - they reconstruct from the class definition on load.  This works
+as long as the callable is a pure function of other Config fields.  See
+:ref:`sharp-edges-serialization` if your callable depends on external state.
+
 See :doc:`advanced` for how to normalize a custom field's ``defaultval`` in
 its ``__init__``, and for the full interaction between ``validate`` and
-``__set__``.  See :ref:`sharp-edges-copy` and :ref:`sharp-edges-serialization`
-for important caveats about copying and serializing configs with callable
+``__set__``.  See :ref:`sharp-edges-copy` for copy behavior with callable
 defaults.

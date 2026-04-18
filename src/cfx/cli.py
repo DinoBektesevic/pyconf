@@ -27,7 +27,7 @@ except ImportError:
     click = None
 
 
-__all__ = []   # internal module; nothing exported
+__all__ = []  # internal module; nothing exported
 
 
 # Maps field class -> function(descriptor) -> extra kwargs for add_argument.
@@ -127,6 +127,7 @@ def field_to_argparse_kwargs(name, descriptor, prefix=""):
     if metavar is not None:
         kwargs["metavar"] = metavar
     return kwargs
+
 
 # Maps field class -> function(descriptor) -> extra kwargs for click.option.
 # Bool and classes absent from this table are handled separately.

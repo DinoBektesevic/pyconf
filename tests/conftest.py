@@ -6,33 +6,34 @@ to make name-conflict behaviour explicit.
 """
 
 import datetime
+
 import pytest
 
 from cfx import (
-    Config,
-    ConfigField,
     Any,
     Bool,
-    Int,
-    Float,
-    Scalar,
-    String,
-    Options,
-    MultiOptions,
-    Path,
-    Seed,
-    Range,
-    List,
-    Dict,
+    Config,
+    ConfigField,
     Date,
-    Time,
     DateTime,
+    Dict,
+    Float,
+    Int,
+    List,
+    MultiOptions,
+    Options,
+    Path,
+    Range,
+    Scalar,
+    Seed,
+    String,
+    Time,
 )
-
 
 # ---------------------------------------------------------------------------
 # Config class hierarchy used by most tests
 # ---------------------------------------------------------------------------
+
 
 class BaseConfig(Config):
     confid = "base"
@@ -47,8 +48,9 @@ class BaseConfig(Config):
 
 class ExtrasConfig(Config):
     confid = "extras"
-    field7 = MultiOptions(("a", "b", "c", "d"), "A multi-options field",
-                          default_value={"a", "b"})
+    field7 = MultiOptions(
+        ("a", "b", "c", "d"), "A multi-options field", default_value={"a", "b"}
+    )
     field8 = Path("./output", "A path field")
     field9 = Seed(None, "An RNG seed field")
     field10 = Range((0.0, 1.0), "A linear range field")
@@ -75,25 +77,23 @@ class GrandchildConfig(ChildConfig):
 
 class IndependentConfig(Config):
     confid = "independent"
-    field1 = Int(99, "Same name as BaseConfig.field1 but Int, not String.")
+    int_field = Int(99, "An integer field unique to IndependentConfig.")
     field18 = Float(3.14, "A field not present in any other config.")
 
 
 class CompoundConfig(
-        Config,
-        components=[IndependentConfig, GrandchildConfig],
-        method="unroll"
+    Config, components=[IndependentConfig, GrandchildConfig], method="unroll"
 ):
     """Flat merge of IndependentConfig and GrandchildConfig."""
+
     pass
 
 
 class NestedConfig(
-        Config,
-        components=[IndependentConfig, GrandchildConfig],
-        method="nested"
+    Config, components=[IndependentConfig, GrandchildConfig], method="nested"
 ):
     """IndependentConfig and GrandchildConfig nested under their confids."""
+
     pass
 
 
@@ -119,6 +119,7 @@ class MixedConfig(Config, components=[DeepInnerConfig], method="nested"):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def base():

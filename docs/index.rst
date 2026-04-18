@@ -47,23 +47,23 @@ integration, and a self-documenting display for free::
 
 .. rubric:: Features
 
-- **Validated fields** — typos and bad values raise immediately at the point
+- **Validated fields** - typos and bad values raise immediately at the point
   of assignment, not silently hours later.
-- **Self-documenting** — ``print(cfg)`` renders a tree of the config hierarchy
+- **Self-documenting** - ``print(cfg)`` renders a tree of the config hierarchy
   followed by a unified table of all fields, nested included.  In Jupyter the
   same layout renders as HTML automatically via ``_repr_html_``.
-- **Composable** — assemble configs from multiple subsystem configs, flat or
+- **Composable** - assemble configs from multiple subsystem configs, flat or
   nested, or mix both styles. The same fields can be organized deeply for
-  precision in code and re-exposed shallowly for users — bridging the gap
+  precision in code and re-exposed shallowly for users - bridging the gap
   between code structure and user-facing logic.
-- **Serializable** — round-trip to/from dict, YAML, and TOML with one method
+- **Serializable** - round-trip to/from dict, YAML, and TOML with one method
   call.
-- **CLI-ready** — every config exposes ``add_arguments`` / ``from_argparse``
+- **CLI-ready** - every config exposes ``add_arguments`` / ``from_argparse``
   for argparse and ``click_options`` / ``from_click`` for Click.  Nested
   sub-configs use dot-notation flags (e.g. ``--source.n-sigma``).
-- **Extensible** — subclass :class:`~cfx.ConfigField` to add your own field
+- **Extensible** - subclass :class:`~cfx.ConfigField` to add your own field
   types with custom validation and normalization.
-- **Zero hard dependencies** — YAML, TOML, and Click support are optional.
+- **Zero hard dependencies** - YAML, TOML, and Click support are optional.
 
 .. toctree::
    :maxdepth: 2

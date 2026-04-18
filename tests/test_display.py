@@ -11,13 +11,14 @@ from cfx.display import (
     make_table,
 )
 
-
 # ---------------------------------------------------------------------------
 # Test configs
 #############################################################################
 
+
 class FlatDisplay(Config):
     """A flat config for display tests."""
+
     confid = "flat"
     x = Float(1.0, "x value")
     y = Int(2, "y value")
@@ -25,12 +26,14 @@ class FlatDisplay(Config):
 
 class InnerDisplay(Config):
     """Inner node."""
+
     confid = "inner"
     val = Float(3.0, "inner value")
 
 
 class OuterDisplay(Config, components=[InnerDisplay]):
     """Outer node."""
+
     confid = "outer"
     name = String("test", "outer name")
 
@@ -41,6 +44,7 @@ class MultilineDoc(Config):
     Second paragraph.
     Third line.
     """
+
     confid = "multiline"
     z = Float(0.0, "z value")
 
@@ -48,6 +52,7 @@ class MultilineDoc(Config):
 #############################################################################
 # config_tree
 #############################################################################
+
 
 class TestConfigTree:
     def test_flat_shows_class_name(self):
@@ -76,6 +81,7 @@ class TestConfigTree:
         class NoDoc(Config):
             confid = "nodoc"
             f = Float(1.0, "f")
+
         tree = config_tree(NoDoc())
         assert "NoDoc" in tree
         assert ":" not in tree  # no colon when there's no docstring
@@ -84,6 +90,7 @@ class TestConfigTree:
 #############################################################################
 # flat_table_rows
 #############################################################################
+
 
 class TestFlatTableRows:
     def test_flat_row_count(self):
@@ -120,6 +127,7 @@ class TestFlatTableRows:
 # make_table — text mode
 #############################################################################
 
+
 class TestMakeTableText:
     def test_returns_string(self):
         rows = flat_table_rows(FlatDisplay())
@@ -149,6 +157,7 @@ class TestMakeTableText:
 # make_table — html mode
 #############################################################################
 
+
 class TestMakeTableHtml:
     def test_returns_string(self):
         rows = flat_table_rows(FlatDisplay())
@@ -172,8 +181,9 @@ class TestMakeTableHtml:
 
     def test_table_attrs_applied(self):
         rows = flat_table_rows(FlatDisplay())
-        html = make_table(rows, format="html",
-                          table_attrs={"class": "cfg", "id": "tbl"})
+        html = make_table(
+            rows, format="html", table_attrs={"class": "cfg", "id": "tbl"}
+        )
         assert 'class="cfg"' in html
         assert 'id="tbl"' in html
         assert "<table" in html
@@ -187,6 +197,7 @@ class TestMakeTableHtml:
 #############################################################################
 # as_table
 #############################################################################
+
 
 class TestAsTable:
     def test_text_contains_tree_and_table(self):
@@ -203,6 +214,7 @@ class TestAsTable:
         assert "<table>" in html
 
     def test_html_table_attrs_propagated(self):
-        html = as_table(FlatDisplay(), format="html",
-                        table_attrs={"class": "my-cfg"})
+        html = as_table(
+            FlatDisplay(), format="html", table_attrs={"class": "my-cfg"}
+        )
         assert 'class="my-cfg"' in html

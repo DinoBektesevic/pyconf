@@ -4,13 +4,13 @@ Each class in this module implements a `ConfigField` specializations and their
 validators; for practical reasons.
 """
 
+import contextlib
 import datetime
 import json
 import numbers
 import pathlib
 
 from .config_field import ConfigField
-
 
 __all__ = [
     "Any",
@@ -89,10 +89,24 @@ class Options(ConfigField):
     ValueError: Expected 'turbo' to be one of ('fast', 'balanced', 'thorough')
     """
 
-    def __init__(self, options, doc, default_value=None, static=False, env=None):  # noqa: D107, E501
+    def __init__(
+        self,
+        options,
+        doc,
+        default_value=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.options = options
         defaultval = options[0] if default_value is None else default_value
-        super().__init__(defaultval, doc, static=static, env=env)
+        super().__init__(
+            defaultval,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def validate(self, value):  # noqa: D102
         if value not in self.options:
@@ -132,10 +146,24 @@ class MultiOptions(ConfigField):
     ...     )
     """
 
-    def __init__(self, options, doc, default_value=None, static=False, env=None):  # noqa: D102, D107, E501
+    def __init__(
+        self,
+        options,
+        doc,
+        default_value=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.options = set(options)
         defaultval = set() if default_value is None else default_value
-        super().__init__(defaultval, doc, static=static, env=env)
+        super().__init__(
+            defaultval,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def __set__(self, obj, value):  # noqa: D105
         # Coerce list/tuple to set: YAML/TOML deserializes sequences as lists,
@@ -199,11 +227,18 @@ class String(ConfigField):
         predicate=None,
         static=False,
         env=None,
-    ):  # noqa: D102, D107
+        transient=None,
+    ):
         self.minsize = minsize
         self.maxsize = maxsize
         self.predicate = predicate
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def validate(self, value):  # noqa: D102
         if not isinstance(value, str):
@@ -253,17 +288,24 @@ class Scalar(ConfigField):
     """
 
     def __init__(
-            self,
-            default_value,
-            doc,
-            minval=None,
-            maxval=None,
-            static=False,
-            env=None,
-    ):  # noqa: D102, D107
+        self,
+        default_value,
+        doc,
+        minval=None,
+        maxval=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def from_string(self, s):  # noqa: D102
         try:
@@ -272,10 +314,10 @@ class Scalar(ConfigField):
             pass
         try:
             return float(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as a number (env var {self.env!r})"
-            )
+            ) from err
 
     def validate(self, value):  # noqa: D102
         if not isinstance(value, numbers.Number):
@@ -320,25 +362,32 @@ class Int(ConfigField):
     """
 
     def __init__(
-            self,
-            default_value,
-            doc,
-            minval=None,
-            maxval=None,
-            static=False,
-            env=None,
-    ):  # noqa: D102, D107
+        self,
+        default_value,
+        doc,
+        minval=None,
+        maxval=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def from_string(self, s):  # noqa: D102
         try:
             return int(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as int (env var {self.env!r})"
-            )
+            ) from err
 
     def validate(self, value):  # noqa: D102
         if not isinstance(value, int) or isinstance(value, bool):
@@ -381,25 +430,32 @@ class Float(ConfigField):
     """
 
     def __init__(
-            self,
-            default_value,
-            doc,
-            minval=None,
-            maxval=None,
-            static=False,
-            env=None,
-    ):  # noqa: D102, D107
+        self,
+        default_value,
+        doc,
+        minval=None,
+        maxval=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.minval = minval
         self.maxval = maxval
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def from_string(self, s):  # noqa: D102
         try:
             return float(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as float (env var {self.env!r})"
-            )
+            ) from err
 
     def validate(self, value):  # noqa: D102
         if not isinstance(value, (float, int)) or isinstance(value, bool):
@@ -477,20 +533,27 @@ class Path(ConfigField):
     """
 
     def __init__(
-            self,
-            default_value,
-            doc,
-            must_exist=False,
-            static=False,
-            env=None,
-    ):  # noqa: D102, D107
+        self,
+        default_value,
+        doc,
+        must_exist=False,
+        static=False,
+        env=None,
+        transient=None,
+    ):
         self.must_exist = must_exist
         if not callable(default_value):
-            try:
+            # Try to coerce strings to Path. If it raises, suppress the error
+            # here. Let validate() throw the expected TypeError and message.
+            with contextlib.suppress(TypeError):
                 default_value = pathlib.Path(default_value)
-            except TypeError:
-                pass  # let validate() produce the error
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def __set__(self, obj, value):  # noqa: D105
         # Re-check static here because we bypass super().__set__ (which carries
@@ -499,10 +562,10 @@ class Path(ConfigField):
             raise AttributeError("Cannot set a static config field.")
         try:
             value = pathlib.Path(value)
-        except TypeError:
+        except TypeError as err:
             raise TypeError(
                 f"Expected a path-like value, got {type(value).__name__!r}"
-            )
+            ) from err
         self.validate(value)
         setattr(obj, self.private_name, value)
 
@@ -514,9 +577,7 @@ class Path(ConfigField):
 
     def validate(self, value):  # noqa: D102
         if not isinstance(value, pathlib.Path):
-            raise TypeError(
-                f"Expected a Path, got {type(value).__name__!r}"
-            )
+            raise TypeError(f"Expected a Path, got {type(value).__name__!r}")
         if self.must_exist and not value.exists():
             raise ValueError(f"Path does not exist: {value!r}")
 
@@ -549,11 +610,11 @@ class Seed(ConfigField):
             return None
         try:
             return int(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as seed (env var {self.env!r}). "
                 f"Use an integer or 'none'."
-            )
+            ) from err
 
     def validate(self, value):  # noqa: D102
         if value is not None and not isinstance(value, int):
@@ -612,20 +673,27 @@ class Range(ConfigField):
             except ValueError:
                 try:
                     return float(x)
-                except ValueError:
+                except ValueError as err:
                     raise ValueError(
                         f"Cannot parse {s!r} as range (env var {self.env!r}). "
                         f"Expected 'min,max' (e.g. '0.0,1.0')."
-                    )
+                    ) from err
+
         return (_num(parts[0]), _num(parts[1]))
 
     def validate(self, value):  # noqa: D102
         try:
             lo, hi = value
-        except (TypeError, ValueError):
-            raise TypeError(f"Expected a (min, max) pair, got {value!r}")
-        if not (isinstance(lo, numbers.Number) and isinstance(hi, numbers.Number)):  # noqa: E501
-            raise TypeError(f"Range bounds must be numeric, got {lo!r} and {hi!r}")  # noqa: E501
+        except (TypeError, ValueError) as err:
+            raise TypeError(
+                f"Expected a (min, max) pair, got {value!r}"
+            ) from err
+        if not (
+            isinstance(lo, numbers.Number) and isinstance(hi, numbers.Number)
+        ):  # noqa: E501
+            raise TypeError(
+                f"Range bounds must be numeric, got {lo!r} and {hi!r}"
+            )  # noqa: E501
         if lo >= hi:
             raise ValueError(f"Expected min < max, got ({lo!r}, {hi!r})")
 
@@ -668,11 +736,18 @@ class List(ConfigField):
         maxlen=None,
         static=False,
         env=None,
-    ):  # noqa: D102, D107
+        transient=None,
+    ):
         self.element_type = element_type
         self.minlen = minlen
         self.maxlen = maxlen
-        super().__init__(default_value, doc, static=static, env=env)
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def __set__(self, obj, value):  # noqa: D105
         # Coerce tuple to list so that click's multiple=True (which returns
@@ -736,10 +811,10 @@ class Dict(ConfigField):
     def from_string(self, s):  # noqa: D102
         try:
             return json.loads(s)
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as err:
             raise ValueError(
                 f"Cannot parse {s!r} as JSON dict (env var {self.env!r})"
-            )
+            ) from err
 
     def to_string(self, value):  # noqa: D102
         return json.dumps(value)
@@ -771,10 +846,10 @@ class Date(ConfigField):
     def from_string(self, s):  # noqa: D102
         try:
             return datetime.date.fromisoformat(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as ISO date (env var {self.env!r})"
-            )
+            ) from err
 
     def to_string(self, value):  # noqa: D102
         return value.isoformat()
@@ -816,10 +891,10 @@ class Time(ConfigField):
     def from_string(self, s):  # noqa: D102
         try:
             return datetime.time.fromisoformat(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as ISO time (env var {self.env!r})"
-            )
+            ) from err
 
     def to_string(self, value):  # noqa: D102
         return value.isoformat()
@@ -854,10 +929,10 @@ class DateTime(ConfigField):
     def from_string(self, s):  # noqa: D102
         try:
             return datetime.datetime.fromisoformat(s)
-        except ValueError:
+        except ValueError as err:
             raise ValueError(
                 f"Cannot parse {s!r} as ISO datetime (env var {self.env!r})"
-            )
+            ) from err
 
     def to_string(self, value):  # noqa: D102
         return value.isoformat()

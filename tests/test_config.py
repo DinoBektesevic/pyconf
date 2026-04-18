@@ -2,21 +2,22 @@
 
 import pytest
 
-from cfx import Config, FrozenConfigError, Int, Float, String
+from cfx import Config, Float, FrozenConfigError, Int, String
+
 from .conftest import (
     BaseConfig,
     ChildConfig,
-    GrandchildConfig,
     CompoundConfig,
-    NestedConfig,
     DeepOuterConfig,
+    GrandchildConfig,
     MixedConfig,
+    NestedConfig,
 )
-
 
 #############################################################################
 # confid auto-naming
 #############################################################################
+
 
 class TestConfid:
     def test_explicit_confid(self):
@@ -25,6 +26,7 @@ class TestConfid:
     def test_auto_confid_is_lowercase_classname(self):
         class MySpecialConfig(Config):
             f = Int(1, "doc")
+
         assert MySpecialConfig.confid == "myspecialconfig"
 
     def test_auto_confid_not_inherited(self):
@@ -37,10 +39,17 @@ class TestConfid:
 # Basic Config methods
 #############################################################################
 
+
 class TestConfigMethods:
     def test_keys(self, base):
         assert set(base.keys()) == {
-            "field1", "field2", "field3", "field4", "field5", "field6", "seed"
+            "field1",
+            "field2",
+            "field3",
+            "field4",
+            "field5",
+            "field6",
+            "seed",
         }
 
     def test_values_returns_defaults(self, base):
@@ -103,6 +112,7 @@ class TestConfigMethods:
 # copy and diff
 #############################################################################
 
+
 class TestCopyDiff:
     def test_copy_is_equal(self, base):
         assert base.copy() == base
@@ -141,6 +151,7 @@ class TestCopyDiff:
 # update
 #############################################################################
 
+
 class TestUpdate:
     def test_update_sets_multiple_fields(self, base):
         base.update({"field1": "updated", "field2": 5.0})
@@ -159,6 +170,7 @@ class TestUpdate:
 #############################################################################
 # freeze
 #############################################################################
+
 
 class TestFreeze:
     def test_freeze_prevents_set(self, base):
@@ -183,13 +195,14 @@ class TestFreeze:
 # validate
 #############################################################################
 
+
 class TestValidate:
     def test_base_validate_is_noop(self, base):
         base.validate()  # should not raise
 
     def test_custom_validate_called_on_from_dict(self):
         class C(Config):
-            field1 = Int(5,  "value a")
+            field1 = Int(5, "value a")
             field2 = Int(10, "value b, must be > field1")
 
             def validate(self):
@@ -201,7 +214,7 @@ class TestValidate:
 
     def test_custom_validate_passes_when_valid(self):
         class C(Config):
-            field1 = Int(5,  "value a")
+            field1 = Int(5, "value a")
             field2 = Int(10, "value b")
 
             def validate(self):
@@ -216,10 +229,11 @@ class TestValidate:
 # to_dict / from_dict
 #############################################################################
 
+
 class TestSerialization:
     def test_to_dict_contains_all_fields(self, base):
         d = base.to_dict()
-        for k in base.keys():
+        for k in base:
             assert k in d
 
     def test_to_dict_values_match(self, base):
@@ -249,6 +263,7 @@ class TestSerialization:
 # Inheritance
 #############################################################################
 
+
 class TestInheritance:
     def test_child_has_parent_fields(self):
         c = ChildConfig()
@@ -262,8 +277,13 @@ class TestInheritance:
     def test_grandchild_has_all_ancestor_fields(self):
         g = GrandchildConfig()
         for f in (
-            "field1", "field2", "field3",
-            "field4", "field5", "field6", "field17"
+            "field1",
+            "field2",
+            "field3",
+            "field4",
+            "field5",
+            "field6",
+            "field17",
         ):
             assert f in g
 
@@ -275,19 +295,13 @@ class TestInheritance:
 # Compound composition (unroll)
 #############################################################################
 
+
 class TestCompoundComposition:
     def test_compound_has_fields_from_all_components(self):
         c = CompoundConfig()
-        assert "field1" in c   # IndependentConfig wins (listed first)
+        assert "int_field" in c  # from IndependentConfig
         assert "field17" in c  # from GrandchildConfig
         assert "field18" in c  # from IndependentConfig only
-
-    def test_compound_field1_is_int_from_independent(self):
-        # IndependentConfig.field1 is Int(99); GrandchildConfig.field1 is
-        # String. IndependentConfig listed first so its field1 wins.
-        c = CompoundConfig()
-        assert isinstance(c.field1, int)
-        assert c.field1 == 99
 
     def test_compound_instances_are_independent(self):
         c1 = CompoundConfig()
@@ -297,18 +311,33 @@ class TestCompoundComposition:
 
     def test_compound_str_includes_all_fields(self):
         s = str(CompoundConfig())
-        assert "field1" in s
+        assert "int_field" in s
         assert "field18" in s
 
     def test_compound_to_dict(self):
         d = CompoundConfig().to_dict()
-        assert "field1" in d
+        assert "int_field" in d
         assert "field18" in d
+
+    def test_duplicate_fields_raise(self):
+        class A(Config):
+            confid = "a"
+            x = String("a", "doc")
+
+        class B(Config):
+            confid = "b"
+            x = String("b", "doc")
+
+        with pytest.raises(ValueError, match="Duplicate fields"):
+
+            class Bad(Config, components=[A, B], method="unroll"):
+                pass
 
 
 #############################################################################
 # Nested composition
 #############################################################################
+
 
 class TestNestedComposition:
     def test_nested_sub_configs_accessible_by_confid(self):
@@ -318,25 +347,25 @@ class TestNestedComposition:
 
     def test_nested_sub_config_field_access(self):
         n = NestedConfig()
-        assert n.independent.field1 == 99
+        assert n.independent.int_field == 99
         assert n.grandchild.field1 == "overridden"
 
     def test_nested_sub_configs_settable(self):
         n = NestedConfig()
-        n.independent.field1 = 7
-        assert n.independent.field1 == 7
+        n.independent.int_field = 7
+        assert n.independent.int_field == 7
 
     def test_nested_sub_configs_printable(self):
         n = NestedConfig()
         # sub-configs are full Config instances - they should print fine
         s = str(n.independent)
-        assert "field1" in s
+        assert "int_field" in s
 
     def test_nested_instances_are_independent(self):
         n1 = NestedConfig()
         n2 = NestedConfig()
-        n1.independent.field1 = 7
-        assert n2.independent.field1 == 99  # should be unaffected
+        n1.independent.int_field = 7
+        assert n2.independent.int_field == 99  # should be unaffected
 
     def test_nested_str_shows_sub_config_summary(self):
         s = str(NestedConfig())
@@ -350,6 +379,7 @@ class TestNestedComposition:
 #############################################################################
 # Multi-level nested composition
 #############################################################################
+
 
 class TestDeepNested:
     def test_construction(self):
@@ -408,6 +438,7 @@ class TestDeepNested:
 #############################################################################
 # Mixed flat+nested composition
 #############################################################################
+
 
 class TestMixedConfig:
     def test_flat_field_accessible(self):
@@ -488,6 +519,7 @@ class TestMixedConfig:
 # __getitem__ for nested configs
 #############################################################################
 
+
 class TestGetItemNested:
     def test_getitem_returns_nested_sub_config(self):
         cfg = NestedConfig()
@@ -510,6 +542,7 @@ class TestGetItemNested:
 # Duplicate confid detection
 #############################################################################
 
+
 class TestDuplicateConfid:
     def test_duplicate_confid_raises(self):
         class A(Config):
@@ -521,6 +554,7 @@ class TestDuplicateConfid:
             y = Float(2.0, "y")
 
         with pytest.raises(ValueError, match="shared"):
+
             class Bad(Config, components=[A, B]):
                 pass
 
@@ -528,6 +562,7 @@ class TestDuplicateConfid:
 #############################################################################
 # Environment variable field precedence
 #############################################################################
+
 
 class TestEnvVarPrecedence:
     def test_env_var_used_when_no_explicit_value(self, monkeypatch):
@@ -560,6 +595,7 @@ class TestEnvVarPrecedence:
 #############################################################################
 # HTML representation
 #############################################################################
+
 
 class TestReprHtml:
     def test_repr_html_returns_string(self):

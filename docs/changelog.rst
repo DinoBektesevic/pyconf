@@ -12,7 +12,7 @@ Features
   for Click (optional dependency).  Nested sub-configs use dot-notation flags
   (e.g. ``--search.n-sigma``), including arbitrarily deep nesting (e.g.
   ``--middle.inner.x``).  An optional config-file positional argument is
-  registered automatically — YAML or TOML files are loaded first and CLI
+  registered automatically - YAML or TOML files are loaded first and CLI
   flags are applied on top.
 - Nested container configs can now declare their own flat fields alongside
   sub-configs.  Previously, any flat field on a ``method="nested"`` class was

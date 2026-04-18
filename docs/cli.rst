@@ -62,7 +62,7 @@ The flags registered for ``PipelineConfig`` are:
 
 Rules:
 
-- **Underscore → hyphen** in the flag name (``n_sigma`` → ``--source.n-sigma``).
+- **Underscore -> hyphen** in the flag name (``n_sigma`` -> ``--source.n-sigma``).
 - **Bool** fields use :class:`argparse.BooleanOptionalAction`:
   ``--dry-run`` sets ``True``, ``--no-dry-run`` sets ``False``.
 - **Nested sub-configs** are prefixed by their ``confid`` with dot notation.
@@ -93,7 +93,7 @@ Pass a config file to load base values, then override with flags::
     # cfg.source.n_sigma == 5.0; everything else loaded from run.yaml
 
 Flags that are omitted resolve to ``None`` and leave the loaded or default
-value unchanged — they do not reset fields to their class defaults.
+value unchanged - they do not reset fields to their class defaults.
 
 .. note::
 

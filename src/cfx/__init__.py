@@ -21,6 +21,6 @@ on the class that uses them, using Python descriptors::
     cfg2 = SearchConfig.from_dict(d)
 """
 
-from .config_field import *  # noqa: F401, F403
 from .config import *  # noqa: F401, F403
+from .config_field import *  # noqa: F401, F403
 from .types import *  # noqa: F401, F403

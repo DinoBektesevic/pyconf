@@ -8,10 +8,10 @@ user-defined configuration classes inherit from.
 import datetime
 import functools
 import pathlib
-import warnings
+from typing import ClassVar
 
 from .cli import field_to_argparse_kwargs, field_to_click_option
-from .display import as_table, as_inline_string
+from .display import as_inline_string, as_table
 
 try:
     import yaml
@@ -35,11 +35,7 @@ except ImportError:
 
 from .config_field import ConfigField
 
-
-__all__ = [
-    "Config",
-    "FrozenConfigError"
-]
+__all__ = ["Config", "FrozenConfigError"]
 
 
 class FrozenConfigError(AttributeError):
@@ -86,19 +82,7 @@ class ConfigMeta(type):
 
     @staticmethod
     def _unroll_defaults(configs):
-        """Collect field descriptors from a list of Config classes.
-
-        Parameters
-        ----------
-        configs : `list[Config]` or `None`
-            Classes whose ``defaults`` dicts are merged in reverse order so
-            that the first entry wins on conflict.
-
-        Returns
-        -------
-        conf : `dict`
-            Mapping of field name to `ConfigField` descriptor.
-        """
+        """Collect field descriptors from a list of Config classes."""
         conf = {}
         if configs is None:
             return conf
@@ -108,60 +92,71 @@ class ConfigMeta(type):
         return conf
 
     @staticmethod
-    def _nest_configs(components):
-        """Instantiate component configs and key them by ``confid``.
+    def _duplicate_confids(components):
+        """Return confids that are shared by multiple components."""
+        seen, dupes = set(), set()
+        for comp in components or []:
+            (dupes if comp.confid in seen else seen).add(comp.confid)
+        return dupes
 
-        Parameters
-        ----------
-        components : `list[Config]` or `None`
-            Classes to instantiate as sub-config objects.
+    @staticmethod
+    def _duplicate_fields(components):
+        """Return fields that have the same name."""
+        seen, dupes = set(), set()
+        for comp in components or []:
+            for name in comp._fields:
+                (dupes if name in seen else seen).add(name)
+        return dupes
 
-        Returns
-        -------
-        nested : `dict`
-            Mapping of ``confid`` to instantiated `Config` object.
-        """
-        nested = {}
-        if components is None:
-            return nested
-        for comp in reversed(components):
-            instance = comp()
-            nested[instance.confid] = instance
-        return nested
-
-    def __new__(cls, cls_name, bases, attrs, **kwargs):  # noqa: D102
-        cls_fields = {k: v for k, v in attrs.items() if isinstance(v, ConfigField)}  # noqa: E501
+    # New has a complicated signature:
+    # cls is the ConfigMeta
+    # cls_name is the name of the class we're about to construct
+    # bases is a tuple of base classes (if inheritance is a thing)
+    # attrs are all the fields declared on the class as a dict (method: impl)
+    # kwargs is used here to get the components or the meta keywords
+    def __new__(cls, cls_name, bases, attrs, **kwargs):
+        # extract ConfigFields/normalize kwargs/set defaults
+        cls_fields = {
+            k: v for k, v in attrs.items() if isinstance(v, ConfigField)
+        }
         components = kwargs.pop("components", None)
-        method = kwargs.pop("method", "nested" if components is not None else "unroll")  # noqa: E501
+        method = kwargs.pop(
+            "method", "nested" if components is not None else "unroll"
+        )
         if "confid" not in attrs:
             attrs["confid"] = cls_name.lower()
 
+        # The rest is similar for both the nested and the unrolled classes:
+        # - first, check for namespace conflicts and raise if any
+        # - populate _nested_classes
+        #    - when nesting, we need to store component classes so that instncs
+        #      are created fresh in Config.__init__. Each parent instance gets
+        #      its own instance sub-configs rather than class-level objects.
+        #    - when unrolling, this is just an empty string
+        # - populate class attributes
+        #    - for nested that are all the ConfigFields declared on the class
+        #      itself; gotten from __new__(..., attrs, ...) kwarg above.
+        #    - for unroll, these are all the ConfigFields from the class and
+        #      from each of its components gotten by unrolling each component
+        #      and checking isinstance(ConfigField). The key here is to not
+        #      forget and unroll inheritance tree also.
         if "nest" in method:
-            # Store component *classes* keyed by confid; instances are created
-            # fresh in Config.__init__ so each parent instance gets its own
-            # sub-configs rather than sharing class-level objects.
-            nested_classes = {}
-            if components is not None:
-                seen_confids = {}
-                for comp in components:
-                    if comp.confid in seen_confids:
-                        raise ValueError(
-                            f"Duplicate confid {comp.confid!r} in components: "
-                            f"{seen_confids[comp.confid].__name__} and "
-                            f"{comp.__name__}"
-                        )
-                    seen_confids[comp.confid] = comp
-                for comp in reversed(components):
-                    nested_classes[comp.confid] = comp
+            if dupes := cls._duplicate_confids(components):
+                raise ValueError(f"Duplicate confids in components: {dupes}")
+            nested_classes = {c.confid: c for c in reversed(components)}
             attrs["_nested_classes"] = nested_classes
             attrs["_fields"] = cls_fields
         else:
+            if dupes := cls._duplicate_fields(components):
+                raise ValueError(f"Duplicate fields in components: {dupes}")
+            attrs["_nested_classes"] = {}
             config = cls._unroll_defaults(bases)
             config.update(cls._unroll_defaults(components))
             config.update(cls_fields)
             attrs["_fields"] = config
             attrs.update(config)
 
+        # et voila, we have created a new class.
         return super().__new__(cls, cls_name, bases, attrs, **kwargs)
 
 
@@ -214,18 +209,32 @@ class Config(metaclass=ConfigMeta):
     Automatically set as the lowercase version of the class name.
     """
 
-    def __init__(self, **kwargs):  # noqa: D107
+    _fields: ClassVar[dict[str, ConfigField]]
+    """Mapping of field name to descriptor, set by the metaclass."""
+
+    _nested_classes: ClassVar[dict[str, type]]
+    """Mapping of confid to component Config class, set by the metaclass."""
+
+    def __init__(self, **kwargs):
         # Nested mode: instantiate each component class fresh so that different
         # parent instances do not share the same sub-config objects.
-        for confid, sub_cls in getattr(type(self), "_nested_classes", {}).items():  # noqa: E501
-            object.__setattr__(self, confid, sub_cls())
+        for confid, sub_cls in type(self)._nested_classes.items():
+            setattr(self, confid, sub_cls())
+
         # Flat/unroll/inherited mode: initialize stored values for non-static,
         # non-callable fields. Callable defaults are left unset so that
         # ConfigField.__get__ can evaluate them lazily on first access.
         for k, v in self._fields.items():
-            if not isinstance(v, Config) and not getattr(type(self), k).static:
-                if not callable(v.defaultval) and v.env is None:
-                    setattr(self, k, v.defaultval)
+            if (
+                not isinstance(v, Config)
+                and not getattr(type(self), k).static
+                and not callable(v.defaultval)
+                and v.env is None
+                and not v.transient
+            ):
+                setattr(self, k, v.defaultval)
+
+        # now set any kwargs explicitly given through init
         for k, v in kwargs.items():
             setattr(self, k, v)
 
@@ -259,42 +268,47 @@ class Config(metaclass=ConfigMeta):
     ###########################################################################
     #                    Dunder methods
     ###########################################################################
-    def __str__(self):  # noqa: D105
+    def __str__(self):
         return as_table(self, format="text")
 
-    def __repr__(self):  # noqa: D105
+    def __repr__(self):
         return as_inline_string(self)
 
-    def _repr_html_(self):  # noqa: D105
+    def _repr_html_(self):
         return as_table(self, format="html")
 
-    def __setattr__(self, name, value):  # noqa: D105
+    def __setattr__(self, name, value):
         if getattr(self, "_frozen", False) and name in self._fields:
             raise FrozenConfigError(
                 f"Cannot set field {name!r} on a frozen config."
             )
         super().__setattr__(name, value)
 
-    def __getitem__(self, key):  # noqa: D105
-        nested_classes = getattr(type(self), "_nested_classes", {})
+    def __getitem__(self, key):
+        nested_classes = type(self)._nested_classes
         if key in self._fields or key in nested_classes:
             return getattr(self, key)
         raise KeyError(key)
 
-    def __setitem__(self, key, value):  # noqa: D105
+    def __setitem__(self, key, value):
         if key not in self._fields:
             raise KeyError(key)
         setattr(self, key, value)
 
-    def __contains__(self, key):  # noqa: D105
-        return key in self._fields or key in getattr(type(self), "_nested_classes", {})  # noqa: E501
+    def __iter__(self):
+        return iter(self._fields)
 
-    def __eq__(self, other):  # noqa: D105
+    def __contains__(self, key):
+        return key in self._fields or key in getattr(
+            type(self), "_nested_classes", {}
+        )  # noqa: E501
+
+    def __eq__(self, other):
         if not isinstance(other, Config):
             return NotImplemented
         if dict(self.items()) != dict(other.items()):
             return False
-        nested_classes = getattr(type(self), "_nested_classes", {})
+        nested_classes = type(self)._nested_classes
         return all(
             getattr(self, c) == getattr(other, c) for c in nested_classes
         )
@@ -302,6 +316,7 @@ class Config(metaclass=ConfigMeta):
     ###########################################################################
     #                    Dict/Set-like methods
     ###########################################################################
+
     def keys(self):
         """Return a set-like object providing a view on the dict's keys."""
         return self._fields.keys()
@@ -353,6 +368,8 @@ class Config(metaclass=ConfigMeta):
         After calling `freeze`, any attempt to set a field raises
         `FrozenConfigError`.
         """
+        # We need to bypass our implementation of setattr for this class
+        # because that was designed to set ConfigFields and this is a flag.
         object.__setattr__(self, "_frozen", True)
 
     def diff(self, other):
@@ -380,7 +397,9 @@ class Config(metaclass=ConfigMeta):
             )
         return {
             key: (this, other)
-            for (key, this), (_, other) in zip(self.items(), other.items())
+            for (key, this), (_, other) in zip(
+                self.items(), other.items(), strict=False
+            )
             if this != other
         }
 
@@ -405,9 +424,11 @@ class Config(metaclass=ConfigMeta):
         >>> modified = base.copy(field1="new", field2=9.9)
         """
         new = self.__class__.__new__(self.__class__)
+
         # Initialize nested sub-configs on the new instance first.
-        for confid, sub_cls in getattr(type(self), "_nested_classes", {}).items():  # noqa: E501
-            object.__setattr__(new, confid, getattr(self, confid).copy())
+        for confid, _ in type(self)._nested_classes.items():
+            setattr(new, confid, getattr(self, confid).copy())
+
         for k in self.keys():
             descriptor = getattr(type(self), k)
             if descriptor.static:
@@ -420,8 +441,10 @@ class Config(metaclass=ConfigMeta):
             # at some point
             if descriptor.private_name in self.__dict__:
                 setattr(new, k, self.__dict__[descriptor.private_name])
+
         for k, v in overrides.items():
             setattr(new, k, v)
+
         return new
 
     ###########################################################################
@@ -459,7 +482,9 @@ class Config(metaclass=ConfigMeta):
         if isinstance(v, tuple):
             # yaml uses !!python/tuple (not safe_load-readable)
             return list(v)
-        if isinstance(v, datetime.time) and not isinstance(v, datetime.datetime):  # noqa: E501
+        if isinstance(v, datetime.time) and not isinstance(
+            v, datetime.datetime
+        ):
             # datetime.time has no native YAML safe representation.
             return v.isoformat()
         return v
@@ -489,7 +514,7 @@ class Config(metaclass=ConfigMeta):
             If ``strict`` is `True` and ``mapping`` contains an undeclared
             field name.
         """
-        nested_classes = getattr(cls, "_nested_classes", {})
+        nested_classes = cls._nested_classes
         instance = cls()
         for k, v in mapping.items():
             if k in nested_classes:
@@ -502,7 +527,7 @@ class Config(metaclass=ConfigMeta):
                 setattr(instance, k, v)
         for confid, sub_cls in nested_classes.items():
             sub_dict = mapping.get(confid, {})
-            object.__setattr__(
+            setattr(
                 instance, confid, sub_cls.from_dict(sub_dict, strict=strict)
             )
         instance.validate()
@@ -518,25 +543,16 @@ class Config(metaclass=ConfigMeta):
             sub-objects are serialized recursively. `pathlib.Path` values are
             serialized as strings so the result is always JSON/YAML/TOML-safe.
 
-        Warns
-        -----
-        UserWarning
-            If any field has a callable default and no explicitly stored value.
-            The serialized value is a computed snapshot; the formula is lost
-            after deserialization.
         """
-        nested_classes = getattr(type(self), "_nested_classes", {})
+        nested_classes = type(self)._nested_classes
         result = {}
         for k in self.keys():
             descriptor = getattr(type(self), k)
-            if callable(descriptor.defaultval) and descriptor.private_name not in self.__dict__:  # noqa: E501
-                warnings.warn(
-                    f"Field {k!r} is a callable. The serialized value will be "
-                    f"a snapshot of its current value, the callable will not "
-                    f"survive deserialization.",
-                    UserWarning,
-                    stacklevel=2,
-                )
+            if (
+                descriptor.private_name not in self.__dict__
+                and descriptor.transient
+            ):
+                continue
             result[k] = self._serialize_value(getattr(self, k))
         for confid in nested_classes:
             result[confid] = getattr(self, confid).to_dict()
@@ -589,9 +605,7 @@ class Config(metaclass=ConfigMeta):
                 "Install it with: pip install pyyaml"
             )
         return yaml.dump(
-            self.to_dict(),
-            allow_unicode=True,
-            default_flow_style=False
+            self.to_dict(), allow_unicode=True, default_flow_style=False
         )
 
     @classmethod
@@ -671,11 +685,13 @@ class Config(metaclass=ConfigMeta):
         prefix : `str`, optional
             Dot-separated prefix prepended to every flag name. Default ``""``.
         """
-        nested_classes = getattr(cls, "_nested_classes", {})
+        nested_classes = cls._nested_classes
 
         if not prefix:
             parser.add_argument(
-                "config_file", nargs="?", default=None,
+                "config_file",
+                nargs="?",
+                default=None,
                 help=(
                     "Optional YAML or TOML config file. "
                     "CLI flags override file values."
@@ -759,7 +775,7 @@ class Config(metaclass=ConfigMeta):
         for name, descriptor in cls._fields.items():
             if not descriptor.static:
                 yield field_to_click_option(name, descriptor, prefix=prefix)
-        for confid, sub_cls in getattr(cls, "_nested_classes", {}).items():
+        for confid, sub_cls in cls._nested_classes.items():
             sub_prefix = f"{prefix}.{confid}" if prefix else confid
             yield from sub_cls._collect_click_options(sub_prefix)
 
@@ -787,19 +803,21 @@ class Config(metaclass=ConfigMeta):
         """
         try:
             import click  # noqa: F401
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "click is required for click_options(). "
                 "Install it with: pip install click"
-            )
+            ) from err
         config_file_option = click.option(
-            "--config-file", default=None,
+            "--config-file",
+            default=None,
             help="Optional YAML or TOML config file. Other flags override file values.",  # noqa: E501
         )
         options = [config_file_option, *cls._collect_click_options()]
 
         def decorator(func):
             return functools.reduce(lambda f, o: o(f), reversed(options), func)
+
         return decorator
 
     @classmethod

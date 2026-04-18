@@ -3,8 +3,8 @@ Advanced Usage
 
 
 This page covers implementation details you will need when writing custom
-field types.  For the quick version — a working custom field and callable
-defaults — see :ref:`custom-fields` in the User Guide.
+field types.  For the quick version - a working custom field and callable
+defaults - see :ref:`custom-fields` in the User Guide.
 
 
 Normalizing the descriptor's defaultval
@@ -48,7 +48,7 @@ normalize in ``Angle.__init__`` as well::
         heading = Angle(370.0, "Survey heading in degrees")
 
     SurveyConfig().heading                       # 10.0
-    type(SurveyConfig()).heading.defaultval      # 10.0 — also normalized
+    type(SurveyConfig()).heading.defaultval      # 10.0 - also normalized
 
 
 How ``__set__`` and ``validate`` interact
@@ -63,14 +63,14 @@ The base :meth:`ConfigField.__set__` does three things in order:
 When you override ``__set__`` to normalize a value, you take over the full
 storage path.  The recommended pattern is:
 
-1. Guard ``self.static`` yourself — ``super().__set__()`` is no longer called
+1. Guard ``self.static`` yourself - ``super().__set__()`` is no longer called
    so its guard is bypassed.
 2. Call ``self.validate(value)`` on the *raw* input before normalizing.
 3. Store the *normalized* value via ``setattr(obj, self.private_name, normalized)``.
 
 This avoids double-validation (validate once on raw, store normalized) and
 keeps the check and the store close together.  :class:`~cfx.Path` follows
-the same pattern — it coerces strings to ``pathlib.Path`` before storing::
+the same pattern - it coerces strings to ``pathlib.Path`` before storing::
 
     class Angle(ConfigField):
         def __set__(self, obj, value):
@@ -93,8 +93,8 @@ HTML rendering
 config instance is the last expression in a cell, producing a ``<pre>`` block
 for the hierarchy tree followed by an HTML ``<table>`` with one row per field.
 
-To generate the same HTML fragment programmatically — for embedding in a
-custom web UI or notebook template — import :func:`~cfx.display.as_table`
+To generate the same HTML fragment programmatically - for embedding in a
+custom web UI or notebook template - import :func:`~cfx.display.as_table`
 directly::
 
     from cfx.display import as_table
@@ -111,7 +111,7 @@ which lets you target it with custom stylesheet rules::
 
     html = as_table(cfg, format="html",
         table_attrs={"class": "cfx-table", "id": "pipeline"})
-    # → <pre>...</pre><table class="cfx-table" id="pipeline">...</table>
+    # -> <pre>...</pre><table class="cfx-table" id="pipeline">...</table>
 
 The lower-level building blocks are also available if you need more control::
 

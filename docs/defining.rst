@@ -18,7 +18,7 @@ constraints, and documentation in one place::
         mode = Options(("fast", "balanced", "thorough"), "Processing mode")
         verbose = Bool(False, "Enable verbose logging")
 
-``print(cfg)`` renders the full schema as a table — no extra code required::
+``print(cfg)`` renders the full schema as a table - no extra code required::
 
     cfg = ProcessingConfig()
     print(cfg)
@@ -71,9 +71,9 @@ change defaults.  Fields from the full MRO are collected automatically::
         )
 
     cfg = DetailedConfig()
-    cfg.iterations  # 100 — inherited from ProcessingConfig
-    cfg.output_dir  # PosixPath('results') — new field; string coerced to Path
-    cfg.tags  # set() — new field with an empty-set default
+    cfg.iterations  # 100 - inherited from ProcessingConfig
+    cfg.output_dir  # PosixPath('results') - new field; string coerced to Path
+    cfg.tags  # set() - new field with an empty-set default
 
 A child can also change the **default** of a parent field by re-declaring it::
 
@@ -87,7 +87,7 @@ A child can also change the **default** of a parent field by re-declaring it::
 Composition
 -----------
 
-Multiple configs can be combined into a single parent — either as
+Multiple configs can be combined into a single parent - either as
 **nested sub-objects** (the default) or **flat-merged** into one namespace.
 The short form is just one line::
 
@@ -107,6 +107,6 @@ The short form is just one line::
     cfg.processing.iterations = 500
     cfg.format.precision = 3
 
-Each sub-config is fully independent — ``cfg.processing`` and ``cfg.format``
+Each sub-config is fully independent - ``cfg.processing`` and ``cfg.format``
 are separate objects with their own field values.  See :doc:`composition` for
 flat merging, serialization, and all other composition options.

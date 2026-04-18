@@ -26,9 +26,9 @@ or overrides::
         max_size = Int(1000, "Maximum item count", minval=1)
 
     cfg = ChildConfig()
-    cfg.iterations  # 100 — inherited
-    cfg.mode        # 'balanced' — default changed by child
-    cfg.max_size    # 1000 — new field added by child
+    cfg.iterations  # 100 - inherited
+    cfg.mode        # 'balanced' - default changed by child
+    cfg.max_size    # 1000 - new field added by child
 
 
 Composing with ``components=``
@@ -105,19 +105,51 @@ Flat merge (unroll)
 -------------------
 
 Pass ``method="unroll"`` to merge fields from all components into one flat
-namespace.  When field names clash, the **first component wins**; the
-composing class's own fields win over all::
+namespace::
 
     class RunConfig(Config, components=[ProcessingConfig, FormatConfig], method="unroll"):
         """All fields from ProcessingConfig and FormatConfig at the top level."""
         run_id = Int(0, "Unique run identifier")
 
     cfg = RunConfig()
-    cfg.iterations  # 100 — from ProcessingConfig
-    cfg.precision   # 6 — from FormatConfig
-    cfg.run_id      # 0 — RunConfig's own field
+    cfg.iterations  # 100 - from ProcessingConfig
+    cfg.precision   # 6 - from FormatConfig
+    cfg.run_id      # 0 - RunConfig's own field
 
     print(cfg)  # single table listing every field from all three classes
+
+.. rubric:: Field resolution order
+
+Fields are merged in three layers, each overriding the previous:
+
+1. **Inherited fields** — fields from the composing class's own base classes
+   (standard Python MRO, depth-first).
+2. **Component fields** — fields from each class listed in ``components=``,
+   applied left to right.  Within a component, its own inheritance chain is
+   already resolved depth-first before merging.
+3. **Own fields** — fields declared directly on the composing class win over
+   everything.
+
+**Parallel name conflicts across components are not allowed.**  If two classes
+in the ``components=`` list define a field with the same name — even if
+inherited — a ``ValueError`` is raised at class-definition time::
+
+    class A(Config):
+        confid = "a"
+        x = Int(1, "shared name")
+
+    class B(Config):
+        confid = "b"
+        x = Int(2, "shared name")
+
+    # Raises ValueError: Duplicate fields in components: {'x'}
+    class Bad(Config, components=[A, B], method="unroll"):
+        pass
+
+Override a component field by redeclaring it on the composing class itself::
+
+    class RunConfig(Config, components=[ProcessingConfig, FormatConfig], method="unroll"):
+        iterations = Int(50, "Override ProcessingConfig default")
 
 
 Which mode to use
@@ -128,4 +160,4 @@ Use **nested** when sub-systems are logically independent and you want
 Use **unroll** when you want a flat namespace and don't need to address
 sub-configs by name.
 
-When in doubt, start with nested — it's easier to introspect and serialize.
+When in doubt, start with nested - it's easier to introspect and serialize.

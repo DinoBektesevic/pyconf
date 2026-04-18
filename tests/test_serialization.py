@@ -2,25 +2,26 @@
 
 import datetime
 import pathlib
-import warnings
+
 import pytest
 
 from cfx import Config, Float
+
 from .conftest import (
     BaseConfig,
-    ExtrasConfig,
     ChildConfig,
-    GrandchildConfig,
     CompoundConfig,
-    NestedConfig,
     DeepOuterConfig,
+    ExtrasConfig,
+    GrandchildConfig,
     MixedConfig,
+    NestedConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def roundtrip_dict(cls, instance):
     """Serialize instance to dict and reconstruct."""
@@ -40,6 +41,7 @@ def roundtrip_toml(cls, instance):
 # ---------------------------------------------------------------------------
 # Flat config - dict round-trip, every field type
 # ---------------------------------------------------------------------------
+
 
 class TestDictRoundTripBase:
     def test_base_config_defaults(self):
@@ -150,6 +152,7 @@ class TestDictRoundTripStrict:
 # Inherited config round-trip
 # ---------------------------------------------------------------------------
 
+
 class TestDictRoundTripInheritance:
     def test_child_config_round_trips(self):
         cfg = ChildConfig()
@@ -167,23 +170,25 @@ class TestDictRoundTripInheritance:
 # Compound (unroll) config round-trip
 # ---------------------------------------------------------------------------
 
+
 class TestDictRoundTripCompound:
     def test_compound_round_trips(self):
         cfg = CompoundConfig()
-        cfg.field1 = 7
+        cfg.int_field = 7
         cfg.field18 = 2.71
         assert roundtrip_dict(CompoundConfig, cfg) == cfg
 
     def test_compound_to_dict_has_all_fields(self):
         d = CompoundConfig().to_dict()
-        assert "field1" in d    # from IndependentConfig (wins on conflict)
-        assert "field17" in d   # from GrandchildConfig
-        assert "field18" in d   # from IndependentConfig only
+        assert "int_field" in d  # from IndependentConfig
+        assert "field17" in d  # from GrandchildConfig
+        assert "field18" in d  # from IndependentConfig only
 
 
 # ---------------------------------------------------------------------------
 # Nested config round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestDictRoundTripNested:
     def test_nested_to_dict_structure(self):
@@ -195,52 +200,50 @@ class TestDictRoundTripNested:
 
     def test_nested_to_dict_values(self):
         n = NestedConfig()
-        n.independent.field1 = 7
+        n.independent.int_field = 7
         d = n.to_dict()
-        assert d["independent"]["field1"] == 7
+        assert d["independent"]["int_field"] == 7
         assert d["grandchild"]["field1"] == "overridden"  # default
 
     def test_nested_round_trip_defaults(self):
         n = NestedConfig()
         rt = NestedConfig.from_dict(n.to_dict())
-        assert rt.independent.field1 == n.independent.field1
+        assert rt.independent.int_field == n.independent.int_field
         assert rt.grandchild.field1 == n.grandchild.field1
 
     def test_nested_round_trip_modified(self):
         n = NestedConfig()
-        n.independent.field1 = 42
+        n.independent.int_field = 42
         n.grandchild.field1 = "loaded"
         rt = NestedConfig.from_dict(n.to_dict())
-        assert rt.independent.field1 == 42
+        assert rt.independent.int_field == 42
         assert rt.grandchild.field1 == "loaded"
 
     def test_nested_instances_independent_after_roundtrip(self):
         n1 = NestedConfig.from_dict(NestedConfig().to_dict())
         n2 = NestedConfig.from_dict(NestedConfig().to_dict())
-        n1.independent.field1 = 55
-        assert n2.independent.field1 == 99
+        n1.independent.int_field = 55
+        assert n2.independent.int_field == 99
 
 
 # ---------------------------------------------------------------------------
 # Callable-default warning on serialization
 # ---------------------------------------------------------------------------
 
-class TestCallableDefaultWarning:
-    def test_to_dict_warns_for_callable_default(self):
+
+class TestCallableDefaultSerialization:
+    def test_callable_default_omitted_from_to_dict(self):
         class DerivedConfig(Config):
             base = Float(2.0, "A base value")
             triple = Float(
                 lambda self: self.base * 3, "3x base, unless overridden"
             )
 
-        cfg = DerivedConfig()
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            d = cfg.to_dict()
-        assert any("triple" in str(w.message) for w in caught)
-        assert d["triple"] == 6.0  # snapshot of computed value
+        d = DerivedConfig().to_dict()
+        assert "triple" not in d
+        assert d["base"] == 2.0
 
-    def test_to_dict_no_warning_when_explicitly_set(self):
+    def test_callable_with_stored_value_included(self):
         class DerivedConfig(Config):
             base = Float(2.0, "A base value")
             triple = Float(
@@ -249,15 +252,23 @@ class TestCallableDefaultWarning:
 
         cfg = DerivedConfig()
         cfg.triple = 99.0
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            cfg.to_dict()
-        assert not any("triple" in str(w.message) for w in caught)
+        assert cfg.to_dict()["triple"] == 99.0
+
+    def test_transient_false_serializes_snapshot(self):
+        class DerivedConfig(Config):
+            base = Float(2.0, "A base value")
+            triple = Float(
+                lambda self: self.base * 3, "3x base", transient=False
+            )
+
+        d = DerivedConfig().to_dict()
+        assert d["triple"] == 6.0
 
 
 # ---------------------------------------------------------------------------
 # YAML round-trips
 # ---------------------------------------------------------------------------
+
 
 class TestYamlRoundTrip:
     def test_base_config_yaml(self):
@@ -292,14 +303,15 @@ class TestYamlRoundTrip:
     def test_nested_yaml(self):
         pytest.importorskip("yaml")
         n = NestedConfig()
-        n.independent.field1 = 77
+        n.independent.int_field = 77
         rt = roundtrip_yaml(NestedConfig, n)
-        assert rt.independent.field1 == 77
+        assert rt.independent.int_field == 77
 
 
 # ---------------------------------------------------------------------------
 # TOML round-trips
 # ---------------------------------------------------------------------------
+
 
 class TestTomlRoundTrip:
     def test_base_config_toml(self):
@@ -343,6 +355,7 @@ class TestTomlRoundTrip:
 # Multi-level nested config round-trips
 # ---------------------------------------------------------------------------
 
+
 class TestDeepNestedRoundTrip:
     def test_yaml(self):
         pytest.importorskip("yaml")
@@ -380,6 +393,7 @@ class TestDeepNestedRoundTrip:
 # ---------------------------------------------------------------------------
 # Mixed flat+nested round-trips
 # ---------------------------------------------------------------------------
+
 
 class TestMixedConfigRoundTrip:
     def test_dict_round_trip(self):

@@ -13,8 +13,8 @@ Accessing and setting fields
 
     cfg = ProcessingConfig()
 
-    cfg.iterations   # 100 — dot access
-    cfg["mode"]      # 'fast' — dict-style access
+    cfg.iterations   # 100 - dot access
+    cfg["mode"]      # 'fast' - dict-style access
 
     cfg.iterations = 200       # dot assignment
     cfg["mode"] = "thorough"   # dict-style assignment
@@ -77,7 +77,7 @@ field assignment raises :exc:`~cfx.FrozenConfigError`::
     cfg.freeze()
     cfg.iterations = 10    # FrozenConfigError: Cannot set field 'iterations' ...
 
-Freezing is instance-level — other instances of the same class are unaffected.
+Freezing is instance-level - other instances of the same class are unaffected.
 To freeze individual fields at the class level instead of entire instances,
 use ``static=True`` on the field declaration (see :doc:`fields`).
 

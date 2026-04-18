@@ -7,8 +7,8 @@ import pathlib
 import pytest
 
 from cfx import (
-    Config,
     Bool,
+    Config,
     Date,
     DateTime,
     Dict,
@@ -25,10 +25,10 @@ from cfx import (
     Time,
 )
 
-
 #############################################################################
 # Helpers
 #############################################################################
+
 
 def parse(cfg_cls, argv):
     """Parse argv into a `Config` instance via argparse."""
@@ -40,6 +40,7 @@ def parse(cfg_cls, argv):
 #############################################################################
 # Config classes used in CLI tests
 #############################################################################
+
 
 class FlatConfig(Config):
     confid = "flat"
@@ -79,6 +80,7 @@ class PipelineConfig(
     Config, components=[SearchConfig, OutputConfig], method="nested"
 ):
     """Nested pipeline config."""
+
     pass
 
 
@@ -104,6 +106,7 @@ class MixedCLI(Config, components=[DeepInner], method="nested"):
 #############################################################################
 # add_arguments / from_argparse - flat fields
 #############################################################################
+
 
 class TestArgparseFlat:
     def test_float_field(self):
@@ -209,6 +212,7 @@ class TestArgparseFlat:
 # add_arguments / from_argparse - nested configs
 #############################################################################
 
+
 class TestArgparseNested:
     def test_nested_float(self):
         parser = argparse.ArgumentParser()
@@ -265,6 +269,7 @@ class TestArgparseNested:
 # Deep (multi-level) nested configs - argparse and click
 #############################################################################
 
+
 class TestDeepNestedCLI:
     def test_argparse_deep_override(self):
         cfg = parse(DeepOuter, ["--middle.inner.value", "9.9"])
@@ -316,6 +321,7 @@ class TestDeepNestedCLI:
 # Mixed flat+nested CLI
 #############################################################################
 
+
 class TestMixedCLI:
     def test_argparse_flat_field(self):
         cfg = parse(MixedCLI, ["--top-val", "42.0"])
@@ -362,6 +368,7 @@ class TestMixedCLI:
 # from_argparse with config file
 #############################################################################
 
+
 class TestFromArgparseFile:
     def test_yaml_file(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
@@ -394,7 +401,9 @@ class TestFromArgparseFile:
     def test_nested_yaml_file_with_cli_override(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
         yaml_file.write_text("search:\n  n_sigma: 1.5\n")
-        cfg = parse(PipelineConfig, [str(yaml_file), "--search.n-sigma", "9.0"])  # noqa: E501
+        cfg = parse(
+            PipelineConfig, [str(yaml_file), "--search.n-sigma", "9.0"]
+        )  # noqa: E501
         assert cfg.search.n_sigma == 9.0
 
 
