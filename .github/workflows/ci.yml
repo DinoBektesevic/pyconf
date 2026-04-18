@@ -30,7 +30,7 @@ jobs:
         run: pip install -e ".[test]"
 
       - name: Lint
-        run: flake8 src/cfx tests/ --max-line-length=79 --statistics --count
+        run: ruff check src/ tests/
 
       - name: Test
         run: pytest tests/ -W error
