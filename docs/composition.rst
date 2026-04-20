@@ -7,9 +7,9 @@ Config composition
 Inheritance
 -----------
 
-Standard Python inheritance works naturally.  The metaclass collects fields
-from the full MRO, so a child class has all parent fields plus any it adds
-or overrides::
+Standard Python inheritance works naturally.  Fields are collected from the
+full MRO automatically, so a child class has all parent fields plus any it
+adds or overrides::
 
     from cfx import Config, Int, Float, Options
 
@@ -37,7 +37,7 @@ Composing with ``components=``
 Pass a list of config classes as ``components=`` to assemble them into a
 larger config::
 
-    from cfx import String
+    from cfx import Config, Int, String
 
     class FormatConfig(Config):
         confid = "format"
@@ -56,7 +56,7 @@ Each component becomes a sub-object accessible by its ``confid``.
 .. rubric:: The ``confid`` attribute
 
 Every config class has a ``confid`` string identifier.  If you do not set it
-explicitly, the metaclass assigns the **lowercase class name** automatically::
+explicitly, it defaults to the **lowercase class name**::
 
     class QuickConfig(Config):
         field1 = Int(1, "A field")
@@ -102,3 +102,32 @@ each sub-dict back to its component class::
 **Duplicate ``confid`` values across components are not allowed.**  If two
 classes in the ``components=`` list share a ``confid``, a ``ValueError`` is
 raised at class-definition time.
+
+Mixed own fields and components
+--------------------------------
+
+A config that uses ``components=`` can also declare its own flat fields
+alongside the sub-configs::
+
+    from cfx import String, Bool
+
+    class PipelineConfig(Config, components=[ProcessingConfig, FormatConfig]):
+        confid = "pipeline"
+        run_id = String("run_01", "Run identifier")
+        dry_run = Bool(False, "Validate only; skip writes")
+
+    cfg = PipelineConfig()
+    cfg.run_id                    # 'run_01'
+    cfg.processing.iterations     # 100
+    cfg.format.precision          # 6
+
+Own fields appear before sub-config fields in the display table.  ``to_dict``
+produces a flat key for each own field and a nested sub-dict for each
+component::
+
+    cfg.to_dict()
+    # {'run_id': 'run_01', 'dry_run': False,
+    #  'processing': {...}, 'format': {...}}
+
+For projecting a config tree into a different namespace, or exposing a
+curated subset of fields under new names, see :doc:`views`.

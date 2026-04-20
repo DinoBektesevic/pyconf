@@ -18,51 +18,54 @@
 
 Declare configuration fields next to the classes that use them. Each field
 carries its own default, type checking, and documentation. Compose any set of
-configs into a larger one, flat or nested, and get serialization, CLI
+configs into a larger one, nested or flat, and get serialization, CLI
 integration, and a self-documenting display for free.
 
 ```python
-from cfx import Config, Float, String, Bool
+from cfx import Config, Float, Int, String, Bool
 
-class CalibConfig(Config):
-    """Photometric calibration parameters."""
-    confid = "calib"
-    scale = Float(1.0, "Flux scale factor")
-    zero_point = Float(25.0, "Photometric zero-point")
+class FormatConfig(Config):
+    """Output formatting."""
+    confid = "format"
+    precision = Int(6, "Decimal places")
+    encoding = String("utf-8", "Output encoding")
 
-class SourceConfig(Config, components=[CalibConfig]):
-    """Source detection and measurement."""
-    confid = "source"
-    n_sigma = Float(3.0, "Detection threshold in sigma")
+class WorkerConfig(Config, components=[FormatConfig]):
+    """Worker settings."""
+    confid = "worker"
+    threads = Int(4, "Worker threads", minval=1)
+    timeout = Float(30.0, "Request timeout in seconds", minval=0.0)
 
-class PipelineConfig(Config, components=[SourceConfig]):
-    """Image analysis pipeline."""
-    confid = "pipeline"
-    run_id = String("run_01", "Run identifier")
-    dry_run = Bool(False, "Validate only; skip writes")
+class AppConfig(Config, components=[WorkerConfig]):
+    """Application configuration."""
+    confid = "app"
+    name = String("myapp", "Application name")
+    debug = Bool(False, "Enable debug output")
 
-cfg = PipelineConfig()
+cfg = AppConfig()
 print(cfg)
 ```
 
 ```
-PipelineConfig: Image analysis pipeline.
-└─ SourceConfig: Source detection and measurement.
-    └─ CalibConfig: Photometric calibration parameters.
-Config         | Key        | Value  | Description
----------------+------------+--------+-----------------------------
-PipelineConfig | run_id     | run_01 | Run identifier
-PipelineConfig | dry_run    | False  | Validate only; skip writes
-SourceConfig   | n_sigma    | 3.0    | Detection threshold in sigma
-CalibConfig    | scale      | 1.0    | Flux scale factor
-CalibConfig    | zero_point | 25.0   | Photometric zero-point
+AppConfig: Application configuration.
+└─ WorkerConfig: Worker settings.
+    └─ FormatConfig: Output formatting.
+Config       | Key       | Value | Description
+-------------+-----------+-------+---------------------------
+AppConfig    | name      | myapp | Application name
+AppConfig    | debug     | False | Enable debug output
+WorkerConfig | threads   | 4     | Worker threads
+WorkerConfig | timeout   | 30.0  | Request timeout in seconds
+FormatConfig | precision | 6     | Decimal places
+FormatConfig | encoding  | utf-8 | Output encoding
 ```
 
 - **Validated fields** — typos and bad values raise immediately at the point of assignment, not silently hours later.
 - **Self-documenting** — `print(cfg)` renders a tree of the config hierarchy followed by a unified table of all fields, nested included. In Jupyter the same layout renders as HTML automatically via `_repr_html_`.
-- **Composable** — assemble configs from multiple subsystem configs, flat or nested, or mix both styles. The same fields can be organized deeply for precision in code and re-exposed shallowly for users — bridging the gap between code structure and user-facing logic.
+- **Composable** — assemble configs from multiple subsystem configs, nested or flat, with serialization, display, and CLI support throughout.
+- **Views** — project a config tree into a custom namespace. Expose a curated subset of fields under new names with `ConfigView`, auto-generate prefixed aliases with `AliasedView`, or enforce that two fields always stay in sync with `Mirror`.
 - **Serializable** — round-trip to/from dict, YAML, and TOML with one method call.
-- **CLI-ready** — every config exposes `add_arguments` / `from_argparse` for argparse and `click_options` / `from_click` for Click. Nested sub-configs use dot-notation flags (e.g. `--source.n-sigma`).
+- **CLI-ready** — every config exposes `add_arguments` / `from_argparse` for argparse and `click_options` / `from_click` for Click. Nested sub-configs use dot-notation flags (e.g. `--worker.threads`).
 - **Extensible** — subclass `ConfigField` to add your own field types with custom validation and normalization.
 - **Zero hard dependencies** — YAML, TOML, and Click support are optional.
 
@@ -84,7 +87,7 @@ pip install "cfx[all]"    # everything
 ## Quick start
 
 ```python
-from cfx import Config, Int, Float, String, Options, Bool, Path
+from cfx import Config, Int, Float, String, Options, Bool
 
 class ProcessingConfig(Config):
     confid = "processing"
@@ -110,6 +113,47 @@ cfg2 = ProcessingConfig.from_dict(d)
 # Copy with overrides, diff two instances
 modified = cfg.copy(iterations=500)
 cfg.diff(modified)   # {'iterations': (200, 500)}
+```
+
+### Views
+
+Project any config tree into a custom namespace — useful when the internal
+structure is more complex than what a consumer needs to see:
+
+```python
+from cfx import Config, Int, Float, String, ConfigView, Alias, AliasedView
+
+class ProcessingConfig(Config):
+    confid = "processing"
+    iterations = Int(100, "Number of iterations")
+    threshold = Float(0.5, "Acceptance threshold")
+
+class FormatConfig(Config):
+    confid = "format"
+    precision = Int(6, "Decimal places")
+    encoding = String("utf-8", "Output encoding")
+
+class PipelineConfig(Config, components=[ProcessingConfig, FormatConfig]):
+    confid = "pipeline"
+
+# Hand-written curated view
+class RunSummary(ConfigView):
+    n_iter   = Alias(PipelineConfig.processing.iterations)
+    decimals = Alias(PipelineConfig.processing.threshold)
+
+cfg = PipelineConfig()
+v = RunSummary(cfg)
+v.n_iter    # 100
+v.n_iter = 500
+cfg.processing.iterations  # 500 — write goes through
+
+# Auto-generated prefixed view (owns its own component instances)
+class JobView(AliasedView, components=[ProcessingConfig, FormatConfig]):
+    pass
+
+jv = JobView()
+jv.processing_iterations = 300
+jv.format_precision = 3
 ```
 
 ### Environment variables

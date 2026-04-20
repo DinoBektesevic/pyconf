@@ -66,8 +66,7 @@ Python >= 3.11) or ``tomli`` to read::
 
 .. note::
 
-   Fields with callable defaults serialize as a **snapshot** of the current
-   computed value.  After a round-trip the field holds a plain stored value
-   and will no longer recompute from its sibling.  A ``UserWarning`` is
-   emitted when this happens.  See :ref:`sharp-edges-serialization` for
-   details and a workaround.
+   Callable-default fields are **skipped** during serialization when no
+   explicit value has been stored.  On load, the callable is still present in
+   the class definition and reconstructs the value naturally.  See
+   :ref:`sharp-edges-serialization` for details and edge cases.

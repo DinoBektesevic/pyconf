@@ -6,30 +6,31 @@ Generate command-line interfaces for your config classes
 automatically, saving you from writing custom argument parsing code.
 cfx generates argparse and Click CLI options directly from your config
 classes.  Every non-static field becomes a flag; nested sub-configs use
-dot-notation (``--source.n-sigma``).  A config file can be supplied as a
+dot-notation (``--worker.threads``).  A config file can be supplied as a
 positional argument (argparse) or ``--config-file`` option (Click); CLI
 flags override file values.
 
 The examples below use the three-level hierarchy from the front page::
 
-    from cfx import Config, Float, String, Bool
+    from cfx import Config, Float, Int, String, Bool
 
-    class CalibConfig(Config):
-        """Photometric calibration parameters."""
-        confid = "calib"
-        scale = Float(1.0, "Flux scale factor")
-        zero_point = Float(25.0, "Photometric zero-point")
+    class FormatConfig(Config):
+        """Output formatting."""
+        confid = "format"
+        precision = Int(6, "Decimal places")
+        encoding = String("utf-8", "Output encoding")
 
-    class SourceConfig(Config, components=[CalibConfig]):
-        """Source detection and measurement."""
-        confid = "source"
-        n_sigma = Float(3.0, "Detection threshold in sigma")
+    class WorkerConfig(Config, components=[FormatConfig]):
+        """Worker settings."""
+        confid = "worker"
+        threads = Int(4, "Worker threads", minval=1)
+        timeout = Float(30.0, "Request timeout in seconds", minval=0.0)
 
-    class PipelineConfig(Config, components=[SourceConfig]):
-        """Image analysis pipeline."""
-        confid = "pipeline"
-        run_id = String("run_01", "Run identifier")
-        dry_run = Bool(False, "Validate only; skip writes")
+    class AppConfig(Config, components=[WorkerConfig]):
+        """Application configuration."""
+        confid = "app"
+        name = String("myapp", "Application name")
+        debug = Bool(False, "Enable debug output")
 
 
 argparse
@@ -41,32 +42,33 @@ Call :meth:`~cfx.Config.add_arguments` on a parser, then
     import argparse
 
     parser = argparse.ArgumentParser()
-    PipelineConfig.add_arguments(parser)
+    AppConfig.add_arguments(parser)
     args = parser.parse_args()
-    cfg = PipelineConfig.from_argparse(args)
+    cfg = AppConfig.from_argparse(args)
 
-The flags registered for ``PipelineConfig`` are:
+The flags registered for ``AppConfig`` are:
 
 .. code-block:: text
 
     positional:
-      config_file                        Optional YAML or TOML config file.
-                                         CLI flags override file values.
+      config_file                                      Optional YAML or TOML config file.
+                                                       CLI flags override file values.
 
     options:
-      --run-id RUN_ID                    Run identifier
-      --dry-run, --no-dry-run            Validate only; skip writes
-      --source.n-sigma SOURCE.N_SIGMA    Detection threshold in sigma
-      --source.calib.scale FLOAT         Flux scale factor
-      --source.calib.zero-point FLOAT    Photometric zero-point
+      --name NAME                                      Application name
+      --debug, --no-debug                              Enable debug output
+      --worker.threads WORKER.THREADS                  Worker threads
+      --worker.timeout WORKER.TIMEOUT                  Request timeout in seconds
+      --worker.format.precision WORKER.FORMAT.PRECISION  Decimal places
+      --worker.format.encoding WORKER.FORMAT.ENCODING    Output encoding
 
 Rules:
 
-- **Underscore -> hyphen** in the flag name (``n_sigma`` -> ``--source.n-sigma``).
+- **Underscore -> hyphen** in the flag name (``run_id`` -> ``--run-id``).
 - **Bool** fields use :class:`argparse.BooleanOptionalAction`:
-  ``--dry-run`` sets ``True``, ``--no-dry-run`` sets ``False``.
+  ``--debug`` sets ``True``, ``--no-debug`` sets ``False``.
 - **Nested sub-configs** are prefixed by their ``confid`` with dot notation.
-  Deeper nesting extends the prefix (``--source.calib.zero-point``).
+  Deeper nesting extends the prefix (``--worker.format.precision``).
 - **config_file** is a positional argument registered once at the top level;
   it is not repeated for nested sub-configs.
 
@@ -78,22 +80,22 @@ The complete Python attribute path maps to the flag name like this:
 
    * - Python path
      - Flag
-   * - ``cfg.run_id``
-     - ``--run-id``
-   * - ``cfg.source.n_sigma``
-     - ``--source.n-sigma``
-   * - ``cfg.source.calib.zero_point``
-     - ``--source.calib.zero-point``
+   * - ``cfg.name``
+     - ``--name``
+   * - ``cfg.worker.threads``
+     - ``--worker.threads``
+   * - ``cfg.worker.format.precision``
+     - ``--worker.format.precision``
 
 Pass a config file to load base values, then override with flags::
 
-    cfg = PipelineConfig.from_argparse(
-        parser.parse_args(["run.yaml", "--source.n-sigma", "5.0"])
+    cfg = AppConfig.from_argparse(
+        parser.parse_args(["app.yaml", "--worker.threads", "8"])
     )
-    # cfg.source.n_sigma == 5.0; everything else loaded from run.yaml
+    # cfg.worker.threads == 8; everything else loaded from app.yaml
 
 Flags that are omitted resolve to ``None`` and leave the loaded or default
-value unchanged - they do not reset fields to their class defaults.
+value unchanged — they do not reset fields to their class defaults.
 
 .. note::
 
@@ -106,9 +108,9 @@ When you need to merge several configs into a single shared parser, pass
 ``prefix=`` explicitly::
 
     parser = argparse.ArgumentParser()
-    SourceConfig.add_arguments(parser, prefix="src")
+    ProcessingConfig.add_arguments(parser, prefix="proc")
     FormatConfig.add_arguments(parser, prefix="fmt")
-    # registers: --src.n-sigma, --fmt.precision, ...
+    # registers: --proc.iterations, --fmt.precision, ...
 
 
 Click
@@ -120,9 +122,9 @@ Stack :meth:`~cfx.Config.click_options` on a ``@click.command()`` and call
     import click
 
     @click.command()
-    @PipelineConfig.click_options()
+    @AppConfig.click_options()
     def run(**kwargs):
-        cfg = PipelineConfig.from_click(kwargs)
+        cfg = AppConfig.from_click(kwargs)
         ...
 
     if __name__ == "__main__":
@@ -141,13 +143,14 @@ The generated options mirror the argparse flags with two differences:
     Usage: run.py [OPTIONS]
 
     Options:
-      --config-file TEXT               Optional YAML or TOML config file.
-      --run-id TEXT                    Run identifier
-      --dry-run / --no-dry-run         Validate only; skip writes
-      --source.n-sigma FLOAT           Detection threshold in sigma
-      --source.calib.scale FLOAT       Flux scale factor
-      --source.calib.zero-point FLOAT  Photometric zero-point
-      --help                           Show this message and exit.
+      --config-file TEXT                         Optional YAML or TOML config file.
+      --name TEXT                                Application name
+      --debug / --no-debug                       Enable debug output
+      --worker.threads INTEGER                   Worker threads
+      --worker.timeout FLOAT                     Request timeout in seconds
+      --worker.format.precision INTEGER          Decimal places
+      --worker.format.encoding TEXT              Output encoding
+      --help                                     Show this message and exit.
 
 Click is an **optional dependency**::
 
