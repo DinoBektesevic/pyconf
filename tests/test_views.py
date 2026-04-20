@@ -2,7 +2,17 @@
 
 import pytest
 
-from cfx import Alias, Config, ConfigView, Float, Int, Mirror, String
+from cfx import (
+    Alias,
+    AliasedView,
+    Config,
+    ConfigView,
+    FlatView,
+    Float,
+    Int,
+    Mirror,
+    String,
+)
 
 #############################################################################
 # Shared test configs
@@ -275,3 +285,160 @@ class TestMirror:
         cfg.shared_x = 7.0
         assert cfg.inner.x == 7.0
         assert cfg.twin.x == 7.0
+
+
+#############################################################################
+# AliasedView — auto-generated prefixed aliases
+#############################################################################
+
+
+class TestAliasedView:
+    def test_default_prefix_is_confid(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        assert "inner_x" in V._aliases
+        assert "inner_y" in V._aliases
+
+    def test_custom_prefix(self):
+        class V(AliasedView, components=[InnerConfig], aliases=["cam"]):
+            pass
+
+        assert "cam_x" in V._aliases
+        assert "cam_y" in V._aliases
+
+    def test_read_through_alias(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v = V()
+        assert v.inner_x == 1.0
+
+    def test_write_through_alias(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v = V()
+        v.inner_x = 9.9
+        assert v.inner.x == 9.9
+
+    def test_init_takes_no_args(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v = V()
+        assert isinstance(v.inner, InnerConfig)
+
+    def test_instances_are_independent(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v1, v2 = V(), V()
+        v1.inner_x = 5.0
+        assert v2.inner_x == 1.0
+
+    def test_multiple_components(self):
+        class V(AliasedView, components=[InnerConfig, SiblingConfig]):
+            pass
+
+        v = V()
+        v.inner_x = 2.5
+        v.sibling_name = "hello"
+        assert v.inner.x == 2.5
+        assert v.sibling.name == "hello"
+
+    def test_conflict_raises_at_class_definition(self):
+        class Dup(Config):
+            confid = "dup"
+            x = Float(0.0, "x")
+
+        with pytest.raises(ValueError, match="conflict"):
+
+            class V(
+                AliasedView, components=[InnerConfig, Dup], aliases=["p", "p"]
+            ):
+                pass
+
+    def test_aliases_length_mismatch_raises(self):
+        with pytest.raises(ValueError, match="same length"):
+
+            class V(
+                AliasedView,
+                components=[InnerConfig, SiblingConfig],
+                aliases=["a"],
+            ):
+                pass
+
+    def test_to_dict(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v = V()
+        v.inner_x = 3.0
+        d = v.to_dict()
+        assert d["inner_x"] == 3.0
+        assert d["inner_y"] == 0
+
+    def test_from_dict(self):
+        class V(AliasedView, components=[InnerConfig]):
+            pass
+
+        v = V.from_dict({"inner_x": 7.0})
+        assert isinstance(v, V)
+        assert v.inner.x == 7.0
+
+    def test_none_prefix_flat_names(self):
+        class V(AliasedView, components=[InnerConfig], aliases=[None]):
+            pass
+
+        assert "x" in V._aliases
+        assert "y" in V._aliases
+        v = V()
+        v.x = 4.0
+        assert v.inner.x == 4.0
+
+    def test_none_prefix_conflict_raises(self):
+        class AlsoHasX(Config):
+            confid = "alsox"
+            x = Float(0.0, "x")
+
+        with pytest.raises(ValueError, match="conflict"):
+
+            class V(
+                AliasedView,
+                components=[InnerConfig, AlsoHasX],
+                aliases=[None, None],
+            ):
+                pass
+
+
+#############################################################################
+# FlatView — unprefixed auto-aliases
+#############################################################################
+
+
+class TestFlatView:
+    def test_flat_aliases_generated(self):
+        class V(FlatView, components=[InnerConfig]):
+            pass
+
+        assert "x" in V._aliases
+        assert "y" in V._aliases
+
+    def test_flat_read_write(self):
+        class V(FlatView, components=[InnerConfig]):
+            pass
+
+        v = V()
+        v.x = 6.0
+        assert v.inner.x == 6.0
+
+    def test_flat_conflict_raises(self):
+        class Clash(Config):
+            confid = "clash"
+            x = Float(0.0, "x")
+
+        with pytest.raises(ValueError, match="conflict"):
+
+            class V(FlatView, components=[InnerConfig, Clash]):
+                pass

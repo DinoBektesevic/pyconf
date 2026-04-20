@@ -2,6 +2,13 @@
 
 ## Features
 
+- `AliasedView`: a self-contained view that auto-generates prefixed `Alias`
+  descriptors for every field in each declared component.  Pass
+  ``components=[...]`` and optionally ``aliases=[...]`` to override the
+  prefix per component (``None`` gives a flat, unprefixed name).  Name
+  conflicts raise ``ValueError`` at class-definition time.
+- `FlatView`: an ``AliasedView`` with all prefixes set to ``None`` —
+  every component field is exposed directly by name.  Raises on conflicts.
 - `Mirror`: a config descriptor that keeps two or more dotpaths in sync.
   Declaring `shared = Mirror("a.x", "b.x")` on a `Config` fans writes to
   every path and asserts agreement on read, raising `ValueError` with a

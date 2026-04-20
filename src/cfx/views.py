@@ -11,13 +11,17 @@ Alias
     Descriptor that maps a view attribute to a dotpath on the bound config.
 ConfigView
     Base class for hand-written curated projections.
+AliasedView
+    Auto-generates prefixed aliases for every field in each component.
+FlatView
+    Like AliasedView but with no prefix — raises on name conflicts.
 """
 
 from typing import ClassVar
 
-from .refs import FieldRef
+from .refs import ComponentRef, FieldRef
 
-__all__ = ["Alias", "ConfigView", "Mirror"]
+__all__ = ["Alias", "AliasedView", "ConfigView", "FlatView", "Mirror"]
 
 
 #############################################################################
@@ -228,4 +232,131 @@ class ConfigView:
         return (
             f"<table><thead><tr><th>Alias</th><th>Path</th></tr></thead>"
             f"<tbody>{rows}</tbody></table>"
+        )
+
+
+#############################################################################
+# AliasedView
+#############################################################################
+
+
+class AliasedView(ConfigView):
+    """A self-contained view that owns its component instances.
+
+    Subclass ``AliasedView`` and pass ``components=`` to auto-generate
+    ``Alias`` descriptors for every field in each component.  By default
+    each alias is prefixed with the component's ``confid``::
+
+        class CalibView(AliasedView, components=[PSFConfig, PhotoConfig]):
+            pass
+
+        v = CalibView()
+        v.psf_kernel = 3.5   # writes through to v.psf.kernel_estimate
+
+    Supply ``aliases=`` to override the prefix for each component (use
+    ``None`` for a flat, unprefixed namespace)::
+
+        class CalibView(AliasedView,
+                        components=[PSFConfig, PhotoConfig],
+                        aliases=["psf", None]):
+            pass
+
+    Name conflicts among auto-generated aliases raise ``ValueError`` at
+    class-definition time.
+
+    Unlike `ConfigView`, an ``AliasedView`` is constructed with no
+    arguments — it creates and owns a fresh instance of each component.
+    """
+
+    _component_classes: ClassVar[dict[str, type]]
+
+    def __init_subclass__(cls, components=None, aliases=None, **kwargs):
+        if components is None:
+            cls._component_classes = {}
+            super().__init_subclass__(**kwargs)
+            return
+
+        if aliases is not None:
+            prefixes = aliases
+        else:
+            prefixes = [c.confid for c in components]
+        if len(prefixes) != len(components):
+            raise ValueError(
+                "aliases= must have the same length as components="
+            )
+
+        seen: set[str] = set()
+        for comp_cls, prefix in zip(components, prefixes, strict=True):
+            for fname in comp_cls._fields:
+                alias_name = fname if prefix is None else f"{prefix}_{fname}"
+                if alias_name in seen:
+                    raise ValueError(
+                        f"Name conflict {alias_name!r} among auto-generated "
+                        f"aliases — use a different prefix or declare an "
+                        f"explicit Alias"
+                    )
+                seen.add(alias_name)
+                descriptor = Alias(f"{comp_cls.confid}.{fname}")
+                descriptor.__set_name__(cls, alias_name)
+                setattr(cls, alias_name, descriptor)
+            ref = ComponentRef(comp_cls.confid, comp_cls)
+            setattr(cls, comp_cls.confid, ref)
+
+        cls._component_classes = {c.confid: c for c in components}
+        super().__init_subclass__(**kwargs)
+
+    def __init__(self):
+        self._alias_root = self
+        for confid, comp_cls in type(self)._component_classes.items():
+            object.__setattr__(self, confid, comp_cls())
+
+    @classmethod
+    def from_dict(cls, d):
+        """Create a fresh view and apply field values from *d*.
+
+        Parameters
+        ----------
+        d : `dict`
+            Alias names and replacement values.
+
+        Returns
+        -------
+        view : `AliasedView`
+            A new view with *d* values applied.
+        """
+        view = cls()
+        for k, v in d.items():
+            if k in cls._aliases:
+                _walk_set(view, cls._aliases[k]._path, v)
+        return view
+
+
+#############################################################################
+# FlatView
+#############################################################################
+
+
+class FlatView(AliasedView):
+    """An ``AliasedView`` with no component prefix.
+
+    Every component field is exposed directly by its own name.  A
+    ``ValueError`` is raised at class-definition time if two components
+    share a field name::
+
+        class InstrumentView(
+                FlatView,
+                components=[
+                    CameraConfig,
+                    FilterConfig,
+                ]):
+            pass
+
+        v = InstrumentView()
+        v.gain = 2.0   # writes through to v.camera.gain
+    """
+
+    def __init_subclass__(cls, components=None, **kwargs):
+        n = len(components) if components is not None else 0
+        super().__init_subclass__(
+            components=components, aliases=[None] * n, **kwargs
         )
