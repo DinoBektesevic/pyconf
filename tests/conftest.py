@@ -81,14 +81,6 @@ class IndependentConfig(Config):
     field18 = Float(3.14, "A field not present in any other config.")
 
 
-class CompoundConfig(
-    Config, components=[IndependentConfig, GrandchildConfig], method="unroll"
-):
-    """Flat merge of IndependentConfig and GrandchildConfig."""
-
-    pass
-
-
 class NestedConfig(
     Config, components=[IndependentConfig, GrandchildConfig], method="nested"
 ):

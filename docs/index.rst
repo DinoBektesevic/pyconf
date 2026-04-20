@@ -52,10 +52,9 @@ integration, and a self-documenting display for free::
 - **Self-documenting** - ``print(cfg)`` renders a tree of the config hierarchy
   followed by a unified table of all fields, nested included.  In Jupyter the
   same layout renders as HTML automatically via ``_repr_html_``.
-- **Composable** - assemble configs from multiple subsystem configs, flat or
-  nested, or mix both styles. The same fields can be organized deeply for
-  precision in code and re-exposed shallowly for users - bridging the gap
-  between code structure and user-facing logic.
+- **Composable** - assemble configs from multiple subsystem configs into a
+  nested hierarchy, each sub-config accessible by name. Serialize, display,
+  and address from the CLI with consistent dot-notation throughout.
 - **Serializable** - round-trip to/from dict, YAML, and TOML with one method
   call.
 - **CLI-ready** - every config exposes ``add_arguments`` / ``from_argparse``

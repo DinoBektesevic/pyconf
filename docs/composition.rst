@@ -51,7 +51,7 @@ larger config::
     cfg.processing.iterations  # 100
     cfg.format.precision       # 6
 
-By default each component becomes a sub-object accessible by its ``confid``.
+Each component becomes a sub-object accessible by its ``confid``.
 
 .. rubric:: The ``confid`` attribute
 
@@ -77,9 +77,8 @@ nested serialization.
 Nested sub-configs
 ------------------
 
-The default composition mode is ``"nested"``.  Each component becomes a fresh
-sub-object on every parent instance, accessible as an attribute named after
-its ``confid``::
+Each component becomes a fresh sub-object on every parent instance,
+accessible as an attribute named after its ``confid``::
 
     cfg = PipelineConfig()
     cfg.processing.iterations = 200
@@ -100,64 +99,6 @@ each sub-dict back to its component class::
 
     cfg2 = PipelineConfig.from_dict(cfg.to_dict())
 
-
-Flat merge (unroll)
--------------------
-
-Pass ``method="unroll"`` to merge fields from all components into one flat
-namespace::
-
-    class RunConfig(Config, components=[ProcessingConfig, FormatConfig], method="unroll"):
-        """All fields from ProcessingConfig and FormatConfig at the top level."""
-        run_id = Int(0, "Unique run identifier")
-
-    cfg = RunConfig()
-    cfg.iterations  # 100 - from ProcessingConfig
-    cfg.precision   # 6 - from FormatConfig
-    cfg.run_id      # 0 - RunConfig's own field
-
-    print(cfg)  # single table listing every field from all three classes
-
-.. rubric:: Field resolution order
-
-Fields are merged in three layers, each overriding the previous:
-
-1. **Inherited fields** — fields from the composing class's own base classes
-   (standard Python MRO, depth-first).
-2. **Component fields** — fields from each class listed in ``components=``,
-   applied left to right.  Within a component, its own inheritance chain is
-   already resolved depth-first before merging.
-3. **Own fields** — fields declared directly on the composing class win over
-   everything.
-
-**Parallel name conflicts across components are not allowed.**  If two classes
-in the ``components=`` list define a field with the same name — even if
-inherited — a ``ValueError`` is raised at class-definition time::
-
-    class A(Config):
-        confid = "a"
-        x = Int(1, "shared name")
-
-    class B(Config):
-        confid = "b"
-        x = Int(2, "shared name")
-
-    # Raises ValueError: Duplicate fields in components: {'x'}
-    class Bad(Config, components=[A, B], method="unroll"):
-        pass
-
-Override a component field by redeclaring it on the composing class itself::
-
-    class RunConfig(Config, components=[ProcessingConfig, FormatConfig], method="unroll"):
-        iterations = Int(50, "Override ProcessingConfig default")
-
-
-Which mode to use
------------------
-
-Use **nested** when sub-systems are logically independent and you want
-``cfg.processing`` and ``cfg.format`` to be distinct namespaces.
-Use **unroll** when you want a flat namespace and don't need to address
-sub-configs by name.
-
-When in doubt, start with nested - it's easier to introspect and serialize.
+**Duplicate ``confid`` values across components are not allowed.**  If two
+classes in the ``components=`` list share a ``confid``, a ``ValueError`` is
+raised at class-definition time.

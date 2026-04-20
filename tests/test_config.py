@@ -7,7 +7,7 @@ from cfx import Config, Float, FrozenConfigError, Int, String
 from .conftest import (
     BaseConfig,
     ChildConfig,
-    CompoundConfig,
+    DeepInnerConfig,
     DeepOuterConfig,
     GrandchildConfig,
     MixedConfig,
@@ -146,6 +146,26 @@ class TestCopyDiff:
         with pytest.raises(TypeError):
             base.diff(extras)
 
+    def test_diff_empty_for_equal_nested(self):
+        assert MixedConfig().diff(MixedConfig()) == {}
+
+    def test_diff_recursive_sees_nested_change(self):
+        a = MixedConfig()
+        b = MixedConfig()
+        b.inner.x = 99.0
+        d = a.diff(b)
+        assert "inner.x" in d
+        assert d["inner.x"] == (1.0, 99.0)
+
+    def test_diff_nested_and_flat_change_together(self):
+        a = MixedConfig()
+        b = MixedConfig()
+        b.top_field = 0.0
+        b.inner.x = 0.0
+        d = a.diff(b)
+        assert "top_field" in d
+        assert "inner.x" in d
+
 
 #############################################################################
 # update
@@ -165,6 +185,23 @@ class TestUpdate:
     def test_update_unknown_key_raises(self, base):
         with pytest.raises(KeyError):
             base.update({"no_such_field": 1})
+
+    def test_update_nested_by_dict(self):
+        cfg = MixedConfig()
+        cfg.update({"inner": {"x": 9.9}})
+        assert cfg.inner.x == 9.9
+
+    def test_update_nested_by_config_instance(self):
+        cfg = MixedConfig()
+        new_inner = DeepInnerConfig()
+        new_inner.x = 7.7
+        cfg.update({"inner": new_inner})
+        assert cfg.inner.x == 7.7
+
+    def test_update_nested_wrong_type_raises(self):
+        cfg = MixedConfig()
+        with pytest.raises(TypeError):
+            cfg.update({"inner": 42})
 
 
 #############################################################################
@@ -189,6 +226,18 @@ class TestFreeze:
         with pytest.raises(FrozenConfigError):
             base.field1 = "after"
         assert base.field1 == "before"
+
+    def test_freeze_propagates_to_nested(self):
+        cfg = MixedConfig()
+        cfg.freeze()
+        with pytest.raises(FrozenConfigError):
+            cfg.inner.x = 99.0
+
+    def test_freeze_prevents_replacing_sub_config(self):
+        cfg = MixedConfig()
+        cfg.freeze()
+        with pytest.raises(FrozenConfigError):
+            cfg.inner = DeepInnerConfig()
 
 
 #############################################################################
@@ -289,49 +338,6 @@ class TestInheritance:
 
     def test_parent_unaffected_by_child_override(self):
         assert BaseConfig().field1 == "a"
-
-
-#############################################################################
-# Compound composition (unroll)
-#############################################################################
-
-
-class TestCompoundComposition:
-    def test_compound_has_fields_from_all_components(self):
-        c = CompoundConfig()
-        assert "int_field" in c  # from IndependentConfig
-        assert "field17" in c  # from GrandchildConfig
-        assert "field18" in c  # from IndependentConfig only
-
-    def test_compound_instances_are_independent(self):
-        c1 = CompoundConfig()
-        c2 = CompoundConfig()
-        c1.field18 = 0.0
-        assert c2.field18 == 3.14
-
-    def test_compound_str_includes_all_fields(self):
-        s = str(CompoundConfig())
-        assert "int_field" in s
-        assert "field18" in s
-
-    def test_compound_to_dict(self):
-        d = CompoundConfig().to_dict()
-        assert "int_field" in d
-        assert "field18" in d
-
-    def test_duplicate_fields_raise(self):
-        class A(Config):
-            confid = "a"
-            x = String("a", "doc")
-
-        class B(Config):
-            confid = "b"
-            x = String("b", "doc")
-
-        with pytest.raises(ValueError, match="Duplicate fields"):
-
-            class Bad(Config, components=[A, B], method="unroll"):
-                pass
 
 
 #############################################################################

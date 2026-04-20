@@ -10,7 +10,6 @@ import functools
 import pathlib
 from typing import ClassVar
 
-from .cli import field_to_argparse_kwargs, field_to_click_option
 from .display import as_inline_string, as_table
 
 try:
@@ -33,6 +32,7 @@ except ImportError:
     except ImportError:
         tomllib = None
 
+from .cli import _CLI_UNSET, field_to_argparse_kwargs, field_to_click_option
 from .config_field import ConfigField
 
 __all__ = ["Config", "FrozenConfigError"]
@@ -50,21 +50,13 @@ class ConfigMeta(type):
     """`Config` metaclass that collects field descriptors at class creation.
 
     At class-definition time, `ConfigMeta` inspects the class body and all
-    bases in MRO order to build a ``defaults`` dict that maps field names to
+    bases in MRO order to build a ``_fields`` dict that maps field names to
     their `ConfigField` descriptors. This dict is attached to the new class
     and drives iteration, serialization, and display.
 
-    Two composition modes are supported, selected via the ``method`` keyword
-    on the class definition:
-
-    ``"unroll"``
-        Fields from all ``components`` and base classes are merged into one
-        flat namespace on the new class. Later entries override earlier ones.
-
-    ``"nested"`` (default)
-        Each component is instantiated as a sub-object and stored under its
-        ``confid`` attribute. The parent class itself holds no flat fields
-        from the components.
+    When ``components=`` is provided, each component class is stored in
+    ``_nested_classes`` and instantiated fresh in `Config.__init__`, so every
+    parent instance gets its own independent sub-config objects.
 
     Parameters
     ----------
@@ -75,9 +67,8 @@ class ConfigMeta(type):
     attrs : `dict`
         Class body attributes.
     components : `list[Config]`, optional
-        Additional config classes to compose into this one.
-    method : `str`, optional
-        Composition method: ``"unroll"`` (default) or ``"nested"``.
+        Additional config classes to compose into this one as nested
+        sub-configs.
     """
 
     @staticmethod
@@ -99,64 +90,34 @@ class ConfigMeta(type):
             (dupes if comp.confid in seen else seen).add(comp.confid)
         return dupes
 
-    @staticmethod
-    def _duplicate_fields(components):
-        """Return fields that have the same name."""
-        seen, dupes = set(), set()
-        for comp in components or []:
-            for name in comp._fields:
-                (dupes if name in seen else seen).add(name)
-        return dupes
-
-    # New has a complicated signature:
-    # cls is the ConfigMeta
-    # cls_name is the name of the class we're about to construct
-    # bases is a tuple of base classes (if inheritance is a thing)
-    # attrs are all the fields declared on the class as a dict (method: impl)
-    # kwargs is used here to get the components or the meta keywords
     def __new__(cls, cls_name, bases, attrs, **kwargs):
-        # extract ConfigFields/normalize kwargs/set defaults
         cls_fields = {
             k: v for k, v in attrs.items() if isinstance(v, ConfigField)
         }
         components = kwargs.pop("components", None)
-        method = kwargs.pop(
-            "method", "nested" if components is not None else "unroll"
-        )
+        method = kwargs.pop("method", None)
+        if method == "unroll":
+            raise TypeError(
+                "method='unroll' has been removed. "
+                "Use nested composition (the default when components= is "
+                "provided) instead."
+            )
+
         if "confid" not in attrs:
             attrs["confid"] = cls_name.lower()
 
-        # The rest is similar for both the nested and the unrolled classes:
-        # - first, check for namespace conflicts and raise if any
-        # - populate _nested_classes
-        #    - when nesting, we need to store component classes so that instncs
-        #      are created fresh in Config.__init__. Each parent instance gets
-        #      its own instance sub-configs rather than class-level objects.
-        #    - when unrolling, this is just an empty string
-        # - populate class attributes
-        #    - for nested that are all the ConfigFields declared on the class
-        #      itself; gotten from __new__(..., attrs, ...) kwarg above.
-        #    - for unroll, these are all the ConfigFields from the class and
-        #      from each of its components gotten by unrolling each component
-        #      and checking isinstance(ConfigField). The key here is to not
-        #      forget and unroll inheritance tree also.
-        if "nest" in method:
+        if components is not None:
             if dupes := cls._duplicate_confids(components):
                 raise ValueError(f"Duplicate confids in components: {dupes}")
-            nested_classes = {c.confid: c for c in reversed(components)}
-            attrs["_nested_classes"] = nested_classes
+            attrs["_nested_classes"] = {c.confid: c for c in components}
             attrs["_fields"] = cls_fields
         else:
-            if dupes := cls._duplicate_fields(components):
-                raise ValueError(f"Duplicate fields in components: {dupes}")
             attrs["_nested_classes"] = {}
             config = cls._unroll_defaults(bases)
-            config.update(cls._unroll_defaults(components))
             config.update(cls_fields)
             attrs["_fields"] = config
             attrs.update(config)
 
-        # et voila, we have created a new class.
         return super().__new__(cls, cls_name, bases, attrs, **kwargs)
 
 
@@ -221,13 +182,12 @@ class Config(metaclass=ConfigMeta):
         for confid, sub_cls in type(self)._nested_classes.items():
             setattr(self, confid, sub_cls())
 
-        # Flat/unroll/inherited mode: initialize stored values for non-static,
-        # non-callable fields. Callable defaults are left unset so that
-        # ConfigField.__get__ can evaluate them lazily on first access.
+        # Pre-populate non-static, non-callable fields so every instance has
+        # an explicit value in __dict__. Callable defaults and env-var fields
+        # are left unset so ConfigField.__get__ evaluates them lazily.
         for k, v in self._fields.items():
             if (
-                not isinstance(v, Config)
-                and not getattr(type(self), k).static
+                not getattr(type(self), k).static
                 and not callable(v.defaultval)
                 and v.env is None
                 and not v.transient
@@ -278,10 +238,10 @@ class Config(metaclass=ConfigMeta):
         return as_table(self, format="html")
 
     def __setattr__(self, name, value):
-        if getattr(self, "_frozen", False) and name in self._fields:
-            raise FrozenConfigError(
-                f"Cannot set field {name!r} on a frozen config."
-            )
+        if getattr(self, "_frozen", False) and (
+            name in self._fields or name in type(self)._nested_classes
+        ):
+            raise FrozenConfigError(f"Cannot set {name!r} on a frozen config.")
         super().__setattr__(name, value)
 
     def __getitem__(self, key):
@@ -345,35 +305,59 @@ class Config(metaclass=ConfigMeta):
         """Set multiple field values from a mapping.
 
         Each key-value pair is set via ``setattr``, routing through the
-        descriptor's ``validate`` method.
+        descriptor's ``validate`` method. Nested sub-configs can be updated
+        by passing the confid as the key with a ``dict`` value (which is
+        applied recursively) or a `Config` instance (which replaces the
+        sub-config entirely).
 
         Parameters
         ----------
         mapping : `dict`
-            Field names and their new values.
+            Field names and their new values. Nested confids are accepted
+            with a ``dict`` or `Config` value.
 
         Raises
         ------
         KeyError
-            If any key in ``mapping`` is not a declared field.
+            If any key in ``mapping`` is not a declared field or nested confid.
+        TypeError
+            If a nested confid key is given a value that is neither a ``dict``
+            nor a `Config` instance.
         """
+        nested_classes = type(self)._nested_classes
         for k, v in mapping.items():
-            if k not in self._fields:
+            if k in self._fields:
+                setattr(self, k, v)
+            elif k in nested_classes:
+                sub = getattr(self, k)
+                if isinstance(v, dict):
+                    sub.update(v)
+                elif isinstance(v, Config):
+                    setattr(self, k, v)
+                else:
+                    raise TypeError(
+                        f"Expected dict or Config for nested key {k!r}, "
+                        f"got {type(v).__name__!r}"
+                    )
+            else:
                 raise KeyError(k)
-            setattr(self, k, v)
 
     def freeze(self):
         """Make this config instance read-only.
 
-        After calling `freeze`, any attempt to set a field raises
-        `FrozenConfigError`.
+        After calling `freeze`, any attempt to set a field or replace a
+        nested sub-config raises `FrozenConfigError`. The freeze propagates
+        recursively to all nested sub-configs.
         """
-        # We need to bypass our implementation of setattr for this class
-        # because that was designed to set ConfigFields and this is a flag.
         object.__setattr__(self, "_frozen", True)
+        for confid in type(self)._nested_classes:
+            getattr(self, confid).freeze()
 
     def diff(self, other):
         """Return fields that differ between this config and another.
+
+        Recurses into nested sub-configs. Keys for nested differences use
+        dot notation: ``"search.n_sigma"``.
 
         Parameters
         ----------
@@ -383,8 +367,8 @@ class Config(metaclass=ConfigMeta):
         Returns
         -------
         diffs : `dict`
-            Mapping of field name to ``(self_value, other_value)`` for every
-            field whose value differs.
+            Mapping of field name (or ``"confid.field"``) to
+            ``(self_value, other_value)`` for every field whose value differs.
 
         Raises
         ------
@@ -395,13 +379,16 @@ class Config(metaclass=ConfigMeta):
             raise TypeError(
                 f"Cannot diff {type(self).__name__!r} with {type(other).__name__!r}"  # noqa: E501
             )
-        return {
-            key: (this, other)
-            for (key, this), (_, other) in zip(
-                self.items(), other.items(), strict=False
-            )
-            if this != other
-        }
+        result = {}
+        for key in self._fields:
+            a, b = getattr(self, key), getattr(other, key)
+            if a != b:
+                result[key] = (a, b)
+        for confid in type(self)._nested_classes:
+            sub = getattr(self, confid).diff(getattr(other, confid))
+            for k, v in sub.items():
+                result[f"{confid}.{k}"] = v
+        return result
 
     def copy(self, **overrides):
         """Return a new instance with optionally overridden field values.
@@ -713,8 +700,8 @@ class Config(metaclass=ConfigMeta):
     @staticmethod
     def _apply_params(instance, params):
         for key, value in params.items():
-            # None means the flag was not supplied; keep the base value.
-            if value is None:
+            # _CLI_UNSET means the flag was not supplied; keep the base value.
+            if value is _CLI_UNSET:
                 continue
             # Walk the dot path to find the target config and field name.
             if "." in key:
@@ -856,5 +843,10 @@ class Config(metaclass=ConfigMeta):
             else:
                 instance = cls.from_toml(p.read_text())
 
-        cls._apply_params(instance, renamed)
+        # Click uses None as its "option not provided" sentinel. Filter these
+        # out before _apply_params so unset click options don't override the
+        # base values. (Argparse uses _CLI_UNSET for the same purpose.)
+        cls._apply_params(
+            instance, {k: v for k, v in renamed.items() if v is not None}
+        )
         return instance

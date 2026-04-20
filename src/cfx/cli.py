@@ -29,6 +29,12 @@ except ImportError:
 
 __all__ = []  # internal module; nothing exported
 
+# Sentinel for "this CLI argument was not supplied by the user."
+# Using None is wrong because some fields (Seed, Any) legitimately accept None
+# as a value. _CLI_UNSET lets _apply_params distinguish "not provided" from
+# "explicitly provided as None".
+_CLI_UNSET = object()
+
 
 # Maps field class -> function(descriptor) -> extra kwargs for add_argument.
 # Classes absent from this table fall through to from_string + metavar.
@@ -107,7 +113,7 @@ def field_to_argparse_kwargs(name, descriptor, prefix=""):
     kwargs = {
         "flag": flag_name(name, prefix),
         "dest": dest_name(name, prefix),
-        "default": None,
+        "default": _CLI_UNSET,
         "help": descriptor.doc,
     }
 
