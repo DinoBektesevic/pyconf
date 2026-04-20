@@ -1,4 +1,4 @@
-# cfx 0.5.0 (unreleased)
+# cfx 0.5.0 (2026-04-19)
 
 ## Features
 
@@ -38,7 +38,7 @@
   descriptor on class access have been updated to use `cls._fields[name]`
   directly.
 
-# cfx 0.4.0 (unreleased)
+# cfx 0.4.0 (2026-04-19)
 
 ## Removals
 - `method="unroll"` composition mode removed. Defining a class with
