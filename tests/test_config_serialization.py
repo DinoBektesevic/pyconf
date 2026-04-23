@@ -32,11 +32,6 @@ def roundtrip_yaml(cls, instance):
     return cls.from_yaml(instance.to_yaml())
 
 
-def roundtrip_toml(cls, instance):
-    pytest.importorskip("tomli_w", reason="tomli-w not installed")
-    return cls.from_toml(instance.to_toml())
-
-
 #############################################################################
 # Flat config - dict round-trip, every field type
 #############################################################################
@@ -293,44 +288,6 @@ class TestYamlRoundTrip:
 #############################################################################
 
 
-class TestTomlRoundTrip:
-    def test_base_config_toml(self):
-        cfg = BaseConfig()
-        cfg.field1 = "toml_test"
-        cfg.field2 = 2.71
-        assert roundtrip_toml(BaseConfig, cfg) == cfg
-
-    def test_path_toml(self):
-        pytest.importorskip("tomli_w")
-        cfg = ExtrasConfig()
-        cfg.field8 = "/tmp/output"
-        rt = roundtrip_toml(ExtrasConfig, cfg)
-        assert rt.field8 == pathlib.Path("/tmp/output")
-
-    def test_range_toml(self):
-        pytest.importorskip("tomli_w")
-        cfg = ExtrasConfig()
-        cfg.field10 = (0.1, 0.9)
-        rt = roundtrip_toml(ExtrasConfig, cfg)
-        assert rt.field10 == (0.1, 0.9)
-        assert isinstance(rt.field10, tuple)
-
-    def test_multioptions_toml(self):
-        pytest.importorskip("tomli_w")
-        cfg = ExtrasConfig()
-        cfg.field7 = {"a"}
-        rt = roundtrip_toml(ExtrasConfig, cfg)
-        assert rt.field7 == {"a"}
-        assert isinstance(rt.field7, set)
-
-    def test_nested_toml(self):
-        pytest.importorskip("tomli_w")
-        n = NestedConfig()
-        n.grandchild.field1 = "toml_loaded"
-        rt = roundtrip_toml(NestedConfig, n)
-        assert rt.grandchild.field1 == "toml_loaded"
-
-
 #############################################################################
 # Multi-level nested config round-trips
 #############################################################################
@@ -344,28 +301,12 @@ class TestDeepNestedRoundTrip:
         rt = roundtrip_yaml(DeepOuterConfig, cfg)
         assert rt.middle.inner.x == 9.9
 
-    def test_toml(self):
-        pytest.importorskip("tomli_w")
-        cfg = DeepOuterConfig()
-        cfg.middle.inner.x = 9.9
-        rt = roundtrip_toml(DeepOuterConfig, cfg)
-        assert rt.middle.inner.x == 9.9
-
     def test_middle_own_field_yaml(self):
         pytest.importorskip("yaml")
         cfg = DeepOuterConfig()
         cfg.middle.y = 7.7
         cfg.middle.inner.x = 3.3
         rt = roundtrip_yaml(DeepOuterConfig, cfg)
-        assert rt.middle.y == 7.7
-        assert rt.middle.inner.x == 3.3
-
-    def test_middle_own_field_toml(self):
-        pytest.importorskip("tomli_w")
-        cfg = DeepOuterConfig()
-        cfg.middle.y = 7.7
-        cfg.middle.inner.x = 3.3
-        rt = roundtrip_toml(DeepOuterConfig, cfg)
         assert rt.middle.y == 7.7
         assert rt.middle.inner.x == 3.3
 
@@ -395,14 +336,5 @@ class TestMixedConfigRoundTrip:
         cfg.top_field = 42.0
         cfg.inner.x = 5.5
         rt = roundtrip_yaml(MixedConfig, cfg)
-        assert rt.top_field == 42.0
-        assert rt.inner.x == 5.5
-
-    def test_toml_round_trip(self):
-        pytest.importorskip("tomli_w")
-        cfg = MixedConfig()
-        cfg.top_field = 42.0
-        cfg.inner.x = 5.5
-        rt = roundtrip_toml(MixedConfig, cfg)
         assert rt.top_field == 42.0
         assert rt.inner.x == 5.5

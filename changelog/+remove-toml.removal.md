@@ -1,0 +1,1 @@
+Removed TOML serialization support (`from_toml()`, `to_toml()`, and the `toml` optional dependency). TOML cannot represent `None` natively, causing silent data loss for `Seed(None)` and similar fields on round-trip. Use YAML for serialization instead.

@@ -5,7 +5,6 @@ Each concrete class here is a `ConfigField` specialization.  `Alias` and
 together.
 """
 
-import contextlib
 import datetime
 import json
 import numbers
@@ -13,6 +12,12 @@ import pathlib
 
 from ..refs import FieldRef
 from ..utils import walk, walk_set
+
+try:
+    import click as _click
+except ImportError:
+    _click = None
+
 from .config_field import ConfigField
 
 __all__ = [
@@ -118,6 +123,29 @@ class Options(ConfigField):
         if value not in self.options:
             raise ValueError(f"Expected {value!r} to be one of {self.options}")
 
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["choices"] = list(self.options)
+        return kwargs
+
+    def to_click_option(self, name, prefix=""):  # noqa: D102
+        if _click is None:
+            raise ImportError(
+                "click is required for click_options(). "
+                "Install it with: pip install click"
+            )
+        hyphenated = name.replace("_", "-")
+        flag = f"--{prefix}.{hyphenated}" if prefix else f"--{hyphenated}"
+        param_name = f"{prefix.replace('.', '__')}__{name}" if prefix else name
+        return _click.option(
+            flag,
+            param_name,
+            type=_click.Choice(list(self.options)),
+            default=None,
+            help=self.doc,
+            show_default=False,
+        )
+
 
 class MultiOptions(ConfigField):
     """A field whose value must be a subset of a fixed set of choices.
@@ -171,20 +199,13 @@ class MultiOptions(ConfigField):
             transient=transient,
         )
 
-    def __set__(self, obj, value):  # noqa: D105
-        # Coerce list/tuple to set: YAML/TOML deserializes sequences as lists,
+    def normalize(self, value):  # noqa: D102
+        # Coerce list/tuple -> set: YAML deserializes sequences as lists,
         # and click's multiple=True returns a tuple.
         if isinstance(value, (list, tuple)):
-            value = set(value)
-        super().__set__(obj, value)
+            return set(value)
+        return value
 
-    def from_string(self, s):  # noqa: D102
-        return {item.strip() for item in s.split(",") if item.strip()}
-
-    def to_string(self, value):  # noqa: D102
-        return "{" + ", ".join(sorted(str(x) for x in value)) + "}"
-
-    # docs are inherited
     def validate(self, value):  # noqa: D102
         if not isinstance(value, (set, frozenset)):
             raise TypeError(f"Expected a set, got {type(value).__name__!r}")
@@ -193,6 +214,46 @@ class MultiOptions(ConfigField):
             raise ValueError(
                 f"Expected {self.options!r}, got {extras!r} instead"
             )
+
+    def serialize(self, value):  # noqa: D102
+        return sorted(value, key=str)
+
+    def deserialize(self, value):  # noqa: D102
+        if isinstance(value, (list, tuple)):
+            return set(value)
+        return value
+
+    def from_string(self, s):  # noqa: D102
+        return {item.strip() for item in s.split(",") if item.strip()}
+
+    def to_string(self, value):  # noqa: D102
+        return "{" + ", ".join(sorted(str(x) for x in value)) + "}"
+
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["nargs"] = "+"
+        kwargs["choices"] = list(self.options)
+        kwargs["type"] = str
+        return kwargs
+
+    def to_click_option(self, name, prefix=""):  # noqa: D102
+        if _click is None:
+            raise ImportError(
+                "click is required for click_options(). "
+                "Install it with: pip install click"
+            )
+        hyphenated = name.replace("_", "-")
+        flag = f"--{prefix}.{hyphenated}" if prefix else f"--{hyphenated}"
+        param_name = f"{prefix.replace('.', '__')}__{name}" if prefix else name
+        return _click.option(
+            flag,
+            param_name,
+            type=_click.Choice(list(self.options)),
+            multiple=True,
+            default=None,
+            help=self.doc,
+            show_default=False,
+        )
 
 
 class String(ConfigField):
@@ -509,6 +570,35 @@ class Bool(ConfigField):
         if not isinstance(value, bool):
             raise TypeError(f"Expected a bool, got {type(value).__name__!r}")
 
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        import argparse
+
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        del kwargs["type"]
+        kwargs["action"] = argparse.BooleanOptionalAction
+        return kwargs
+
+    def to_click_option(self, name, prefix=""):  # noqa: D102
+        if _click is None:
+            raise ImportError(
+                "click is required for click_options(). "
+                "Install it with: pip install click"
+            )
+        hyphenated = name.replace("_", "-")
+        if prefix:
+            flag_pair = f"--{prefix}.{hyphenated}/--{prefix}.no-{hyphenated}"
+            param_name = f"{prefix.replace('.', '__')}__{name}"
+        else:
+            flag_pair = f"--{hyphenated}/--no-{hyphenated}"
+            param_name = name
+        return _click.option(
+            flag_pair,
+            param_name,
+            default=None,
+            help=self.doc,
+            show_default=False,
+        )
+
 
 class Path(ConfigField):
     """A field that coerces and validates filesystem paths.
@@ -548,11 +638,6 @@ class Path(ConfigField):
         transient=None,
     ):
         self.must_exist = must_exist
-        if not callable(default_value):
-            # Try to coerce strings to Path. If it raises, suppress the error
-            # here. Let validate() throw the expected TypeError and message.
-            with contextlib.suppress(TypeError):
-                default_value = pathlib.Path(default_value)
         super().__init__(
             default_value,
             doc,
@@ -561,19 +646,25 @@ class Path(ConfigField):
             transient=transient,
         )
 
-    def __set__(self, obj, value):  # noqa: D105
-        # Re-check static here because we bypass super().__set__ (which carries
-        # the static guard) in order to coerce the value before storing.
-        if self.static:
-            raise AttributeError("Cannot set a static config field.")
+    def normalize(self, value):  # noqa: D102
+        # Coerce str/os.PathLike -> pathlib.Path. Let validate() handle
+        # any TypeError if the value is truly not path-like.
         try:
-            value = pathlib.Path(value)
-        except TypeError as err:
-            raise TypeError(
-                f"Expected a path-like value, got {type(value).__name__!r}"
-            ) from err
-        self.validate(value)
-        setattr(obj, self.private_name, value)
+            return pathlib.Path(value)
+        except TypeError:
+            return value
+
+    def validate(self, value):  # noqa: D102
+        if not isinstance(value, pathlib.Path):
+            raise TypeError(f"Expected a Path, got {type(value).__name__!r}")
+        if self.must_exist and not value.exists():
+            raise ValueError(f"Path does not exist: {value!r}")
+
+    def serialize(self, value):  # noqa: D102
+        return str(value)
+
+    def deserialize(self, value):  # noqa: D102
+        return pathlib.Path(value)
 
     def from_string(self, s):  # noqa: D102
         return pathlib.Path(s)
@@ -581,11 +672,10 @@ class Path(ConfigField):
     def to_string(self, value):  # noqa: D102
         return str(value)
 
-    def validate(self, value):  # noqa: D102
-        if not isinstance(value, pathlib.Path):
-            raise TypeError(f"Expected a Path, got {type(value).__name__!r}")
-        if self.must_exist and not value.exists():
-            raise ValueError(f"Path does not exist: {value!r}")
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "PATH"
+        return kwargs
 
 
 class Seed(ConfigField):
@@ -629,6 +719,11 @@ class Seed(ConfigField):
                 f"got {type(value).__name__!r}"
             )
 
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "INT|none"
+        return kwargs
+
 
 class Range(ConfigField):
     """A field for a linear (min, max) numeric range.
@@ -656,12 +751,24 @@ class Range(ConfigField):
         If ``min >= max``.
     """
 
-    def __set__(self, obj, value):  # noqa: D105
-        # Coerce list to tuple so that a round-trip through YAML/TOML (which
-        # deserializes sequences as lists) does not change the stored type.
+    def normalize(self, value):  # noqa: D102
+        # Coerce list -> tuple: YAML deserializes sequences as lists.
         if isinstance(value, list):
-            value = tuple(value)
-        super().__set__(obj, value)
+            return tuple(value)
+        return value
+
+    def serialize(self, value):  # noqa: D102
+        return list(value)
+
+    def deserialize(self, value):  # noqa: D102
+        if isinstance(value, list):
+            return tuple(value)
+        return value
+
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "MIN,MAX"
+        return kwargs
 
     def from_string(self, s):  # noqa: D102
         parts = s.split(",")
@@ -755,12 +862,45 @@ class List(ConfigField):
             transient=transient,
         )
 
-    def __set__(self, obj, value):  # noqa: D105
-        # Coerce tuple to list so that click's multiple=True (which returns
-        # a tuple) does not fail validation.
+    def normalize(self, value):  # noqa: D102
+        # Coerce tuple -> list: click's multiple=True returns a tuple.
         if isinstance(value, tuple):
-            value = list(value)
-        super().__set__(obj, value)
+            return list(value)
+        return value
+
+    def serialize(self, value):  # noqa: D102
+        return list(value)
+
+    def deserialize(self, value):  # noqa: D102
+        return list(value) if not isinstance(value, list) else value
+
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["nargs"] = "+"
+        kwargs["type"] = (
+            self.element_type if self.element_type is not None else str
+        )
+        return kwargs
+
+    def to_click_option(self, name, prefix=""):  # noqa: D102
+        if _click is None:
+            raise ImportError(
+                "click is required for click_options(). "
+                "Install it with: pip install click"
+            )
+        hyphenated = name.replace("_", "-")
+        flag = f"--{prefix}.{hyphenated}" if prefix else f"--{hyphenated}"
+        param_name = f"{prefix.replace('.', '__')}__{name}" if prefix else name
+        et = self.element_type if self.element_type is not None else str
+        return _click.option(
+            flag,
+            param_name,
+            type=et,
+            multiple=True,
+            default=None,
+            help=self.doc,
+            show_default=False,
+        )
 
     def from_string(self, s):  # noqa: D102
         try:
@@ -829,6 +969,11 @@ class Dict(ConfigField):
         if not isinstance(value, dict):
             raise TypeError(f"Expected a dict, got {type(value).__name__!r}")
 
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "JSON"
+        return kwargs
+
 
 class Date(ConfigField):
     """A field that validates `datetime.date` values.
@@ -849,6 +994,26 @@ class Date(ConfigField):
         If the value is not a `datetime.date`.
     """
 
+    def normalize(self, value):  # noqa: D102
+        # Coerce ISO string -> datetime.date for round-trips through to_dict.
+        if isinstance(value, str):
+            return datetime.date.fromisoformat(value)
+        return value
+
+    def validate(self, value):  # noqa: D102
+        if not isinstance(value, datetime.date):
+            raise TypeError(
+                f"Expected a datetime.date, got {type(value).__name__!r}"
+            )
+
+    def serialize(self, value):  # noqa: D102
+        return value.isoformat()
+
+    def deserialize(self, value):  # noqa: D102
+        if isinstance(value, str):
+            return datetime.date.fromisoformat(value)
+        return value
+
     def from_string(self, s):  # noqa: D102
         try:
             return datetime.date.fromisoformat(s)
@@ -860,11 +1025,10 @@ class Date(ConfigField):
     def to_string(self, value):  # noqa: D102
         return value.isoformat()
 
-    def validate(self, value):  # noqa: D102
-        if not isinstance(value, datetime.date):
-            raise TypeError(
-                f"Expected a datetime.date, got {type(value).__name__!r}"
-            )
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "YYYY-MM-DD"
+        return kwargs
 
 
 class Time(ConfigField):
@@ -886,13 +1050,27 @@ class Time(ConfigField):
         If the value is not a `datetime.time`.
     """
 
-    def __set__(self, obj, value):  # noqa: D105
-        # Coerce ISO-format string to datetime.time so that round-trips through
-        # to_dict/from_dict work: datetime.time has no native YAML safe
-        # representation, so _serialize_value emits an ISO string instead.
+    def normalize(self, value):  # noqa: D102
+        # Coerce ISO string -> datetime.time: to_dict serializes time as an
+        # ISO string (YAML has no native time type), so from_dict round-trips
+        # through here.
         if isinstance(value, str):
-            value = datetime.time.fromisoformat(value)
-        super().__set__(obj, value)
+            return datetime.time.fromisoformat(value)
+        return value
+
+    def validate(self, value):  # noqa: D102
+        if not isinstance(value, datetime.time):
+            raise TypeError(
+                f"Expected a datetime.time, got {type(value).__name__!r}"
+            )
+
+    def serialize(self, value):  # noqa: D102
+        return value.isoformat()
+
+    def deserialize(self, value):  # noqa: D102
+        if isinstance(value, str):
+            return datetime.time.fromisoformat(value)
+        return value
 
     def from_string(self, s):  # noqa: D102
         try:
@@ -905,11 +1083,10 @@ class Time(ConfigField):
     def to_string(self, value):  # noqa: D102
         return value.isoformat()
 
-    def validate(self, value):  # noqa: D102
-        if not isinstance(value, datetime.time):
-            raise TypeError(
-                f"Expected a datetime.time, got {type(value).__name__!r}"
-            )
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "HH:MM:SS"
+        return kwargs
 
 
 class DateTime(ConfigField):
@@ -932,6 +1109,25 @@ class DateTime(ConfigField):
         If the value is not a `datetime.datetime`.
     """
 
+    def normalize(self, value):  # noqa: D102
+        if isinstance(value, str):
+            return datetime.datetime.fromisoformat(value)
+        return value
+
+    def validate(self, value):  # noqa: D102
+        if not isinstance(value, datetime.datetime):
+            raise TypeError(
+                f"Expected a datetime.datetime, got {type(value).__name__!r}"
+            )
+
+    def serialize(self, value):  # noqa: D102
+        return value.isoformat()
+
+    def deserialize(self, value):  # noqa: D102
+        if isinstance(value, str):
+            return datetime.datetime.fromisoformat(value)
+        return value
+
     def from_string(self, s):  # noqa: D102
         try:
             return datetime.datetime.fromisoformat(s)
@@ -943,11 +1139,10 @@ class DateTime(ConfigField):
     def to_string(self, value):  # noqa: D102
         return value.isoformat()
 
-    def validate(self, value):  # noqa: D102
-        if not isinstance(value, datetime.datetime):
-            raise TypeError(
-                f"Expected a datetime.datetime, got {type(value).__name__!r}"
-            )
+    def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
+        kwargs = super().to_argparse_kwargs(name, prefix)
+        kwargs["metavar"] = "YYYY-MM-DDTHH:MM:SS"
+        return kwargs
 
 
 #############################################################################

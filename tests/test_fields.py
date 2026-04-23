@@ -538,12 +538,21 @@ class TestDateTimeFields:
         c.f = datetime.date(2021, 6, 15)
         assert c.f == datetime.date(2021, 6, 15)
 
-    def test_date_rejects_string(self):
+    def test_date_coerces_iso_string(self):
+        # ISO strings are normalized to datetime.date for round-trips.
+        class C(Config):
+            f = Date(datetime.date(2020, 1, 1), "doc")
+
+        c = C()
+        c.f = "2021-06-15"
+        assert c.f == datetime.date(2021, 6, 15)
+
+    def test_date_rejects_non_date_non_string(self):
         class C(Config):
             f = Date(datetime.date(2020, 1, 1), "doc")
 
         with pytest.raises(TypeError):
-            C().f = "2021-06-15"
+            C().f = 12345
 
     def test_time_accepts_time(self):
         class C(Config):

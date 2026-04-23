@@ -1,0 +1,1 @@
+Added field-owned serialization: `serialize()` and `deserialize()` methods on `ConfigField` replace the monolithic `Config._serialize_value()`. Each field type encodes its own on-disk form. `Path` serializes as a string, `MultiOptions` as a sorted list, `Range` as a list, `Date`/`Time`/`DateTime` as ISO strings. The base implementation is an identity pass-through.

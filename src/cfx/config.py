@@ -6,7 +6,6 @@ happen in `Config.__init_subclass__`, which runs at class-definition time for
 every subclass.
 """
 
-import datetime
 import functools
 import pathlib
 from typing import ClassVar
@@ -18,28 +17,12 @@ try:
 except ImportError:
     yaml = None
 
-try:
-    import tomli_w
-except ImportError:
-    tomli_w = None
-
-# TODO: this is all a built-in from Py3.11 so we can count on it existing from
-# end of 2026 onwards
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib
-    except ImportError:
-        tomllib = None
-
 import typing
 import warnings
 
-from .cli import _CLI_UNSET, field_to_argparse_kwargs, field_to_click_option
+from .cli import _CLI_UNSET
 from .refs import ComponentRef
 from .types import ConfigField, FieldSpec, resolve_field_spec
-from .utils import strip_none
 
 __all__ = ["Config", "FrozenConfigError"]
 
@@ -135,6 +118,13 @@ class Config:
                 setattr(cls, attr_name, descriptor)
                 own_fields[attr_name] = descriptor
 
+        # Collect inherited fields first, regardless of composition mode.
+        # Fixes the bug where components= discarded parent fields.
+        inherited: dict[str, ConfigField] = {}
+        for base in reversed(cls.__bases__):
+            if hasattr(base, "_fields"):
+                inherited.update(base._fields)
+
         if components is not None:
             seen: set[str] = set()
             dupes: set[str] = set()
@@ -145,14 +135,10 @@ class Config:
             cls._nested_classes = {c.confid: c for c in components}
             for confid, nested_cls in cls._nested_classes.items():
                 setattr(cls, confid, ComponentRef(confid, nested_cls))
-            cls._fields = own_fields
         else:
             cls._nested_classes = {}
-            inherited: dict[str, ConfigField] = {}
-            for base in reversed(cls.__bases__):
-                if hasattr(base, "_fields"):
-                    inherited.update(base._fields)
-            cls._fields = {**inherited, **own_fields}
+
+        cls._fields = {**inherited, **own_fields}
 
     def __init__(self, **kwargs):
         # Nested mode: instantiate each component class fresh so that different
@@ -319,6 +305,7 @@ class Config:
                     )
             else:
                 raise KeyError(k)
+        self.validate()
 
     def freeze(self):
         """Make this config instance read-only.
@@ -404,7 +391,7 @@ class Config:
             # factory and recompute lazily from the copy's own field values
             # I can't see how, but there's no way this won't have consequences
             # at some point
-            if descriptor.private_name in self.__dict__:
+            if descriptor.is_set(self):
                 setattr(new, k, self.__dict__[descriptor.private_name])
 
         for k, v in overrides.items():
@@ -415,36 +402,6 @@ class Config:
     ###########################################################################
     #                    Serialization
     ###########################################################################
-    @staticmethod
-    def _serialize_value(v):
-        """Convert a field value to a plain, serializer-safe Python object.
-
-        YAML and TOML serializers cannot handle Python-specific types like
-        pathlib.Path, set, frozenset, or tuple natively. We normalize them
-        here so that yaml.dump / tomli_w.dumps always receive plain types.
-        The reverse coercion (list->tuple, list->set, str->Path) is handled
-        by each field's __set__ when from_dict / from_yaml / from_toml
-        loads the data back.
-        """
-        if isinstance(v, Config):
-            return v.to_dict()
-        if isinstance(v, pathlib.Path):
-            # PosixPath / WindowsPath are not YAML/TOML serializable.
-            return str(v)
-        if isinstance(v, (set, frozenset)):
-            # yaml uses !!set (not safe_load-readable); TOML has no set type.
-            # Sorting gives deterministic output
-            return sorted(v, key=str)
-        if isinstance(v, tuple):
-            # yaml uses !!python/tuple (not safe_load-readable)
-            return list(v)
-        if isinstance(v, datetime.time) and not isinstance(
-            v, datetime.datetime
-        ):
-            # datetime.time has no native YAML safe representation.
-            return v.isoformat()
-        return v
-
     @classmethod
     def from_dict(cls, mapping, strict=True):
         """Create an instance from a plain `dict`.
@@ -496,8 +453,9 @@ class Config:
                 if strict:
                     raise KeyError(f"Unknown field {k!r} for {cls.__name__!r}")
                 continue
-            if not cls._fields[k].static:
-                setattr(instance, k, v)
+            descriptor = cls._fields[k]
+            if not descriptor.static:
+                setattr(instance, k, descriptor.deserialize(v))
         for confid, sub_cls in nested_classes.items():
             sub_dict = mapping.get(confid, {})
             setattr(
@@ -521,12 +479,9 @@ class Config:
         result = {}
         for k in self.keys():
             descriptor = type(self)._fields[k]
-            if (
-                descriptor.private_name not in self.__dict__
-                and descriptor.transient
-            ):
+            if not descriptor.is_set(self) and descriptor.transient:
                 continue
-            result[k] = self._serialize_value(getattr(self, k))
+            result[k] = descriptor.serialize(getattr(self, k))
         for confid in nested_classes:
             result[confid] = getattr(self, confid).to_dict()
         if "_version" in vars(type(self)):
@@ -583,63 +538,6 @@ class Config:
             self.to_dict(), allow_unicode=True, default_flow_style=False
         )
 
-    @classmethod
-    def from_toml(cls, text, strict=True):
-        """Create an instance from a TOML string.
-
-        Parameters
-        ----------
-        text : `str`
-            TOML-encoded config.
-        strict : `bool`, optional
-            Passed to `from_dict`. Default is `True`.
-
-        Returns
-        -------
-        cfg : `Config`
-            A new instance with values from the TOML.
-
-        Raises
-        ------
-        ImportError
-            If neither ``tomllib`` (stdlib, Python >= 3.11) nor ``tomli``
-            is available.
-        """
-        if tomllib is None:
-            raise ImportError(
-                "TOML read support requires tomli on Python < 3.11. "
-                "Install it with: pip install tomli"
-            )
-        return cls.from_dict(tomllib.loads(text), strict=strict)
-
-    def to_toml(self):
-        """Serialize this config to a TOML string.
-
-        Returns
-        -------
-        toml_str : `str`
-            TOML representation of the config.
-
-        Raises
-        ------
-        ImportError
-            If ``tomli-w`` is not installed.
-        """
-        if tomli_w is None:
-            raise ImportError(
-                "TOML write support requires tomli-w. "
-                "Install it with: pip install tomli-w"
-            )
-        # TOML has no null type. Strip None values so tomli_w doesn't raise.
-        # Fields with None values will be absent from the TOML output and will
-        # fall back to their class-level default when loaded - which is correct
-        # for fields like Seed(None, ...) where None is the intended default.
-        # Now, since this is a config and not a generic data structure that
-        # needs to persist values/collections and whatnot, I'm hoping this is
-        # never an actual problem and that fields that need None's as defaults
-        # just default to None's. But I guess we'll see.
-        return tomli_w.dumps(strip_none(self.to_dict()))
-
     ###########################################################################
     #                    CLI
     ###########################################################################
@@ -667,19 +565,15 @@ class Config:
                 "config_file",
                 nargs="?",
                 default=None,
-                help=(
-                    "Optional YAML or TOML config file. "
-                    "CLI flags override file values."
-                ),
+                help="Optional YAML config file. CLI flags override file.",
             )
 
         for name, descriptor in cls._fields.items():
             if descriptor.static:
                 continue
-
-            info = field_to_argparse_kwargs(name, descriptor, prefix=prefix)
-            flag = info.pop("flag")
-            parser.add_argument(flag, **info)
+            kwargs = descriptor.to_argparse_kwargs(name, prefix=prefix)
+            flag = kwargs.pop("flag")
+            parser.add_argument(flag, **kwargs)
 
         for confid, sub_cls in nested_classes.items():
             sub_prefix = f"{prefix}.{confid}" if prefix else confid
@@ -736,10 +630,7 @@ class Config:
         config_file = params.get("config_file")
         if config_file is not None:
             p = pathlib.Path(config_file)
-            if p.suffix in (".yaml", ".yml"):
-                instance = cls.from_yaml(p.read_text())
-            else:
-                instance = cls.from_toml(p.read_text())
+            instance = cls.from_yaml(p.read_text())
 
         # Apply CLI overrides on top
         cls._apply_params(instance, params)
@@ -749,7 +640,7 @@ class Config:
     def _collect_click_options(cls, prefix=""):
         for name, descriptor in cls._fields.items():
             if not descriptor.static:
-                yield field_to_click_option(name, descriptor, prefix=prefix)
+                yield descriptor.to_click_option(name, prefix=prefix)
         for confid, sub_cls in cls._nested_classes.items():
             sub_prefix = f"{prefix}.{confid}" if prefix else confid
             yield from sub_cls._collect_click_options(sub_prefix)
@@ -786,7 +677,7 @@ class Config:
         config_file_option = click.option(
             "--config-file",
             default=None,
-            help="Optional YAML or TOML config file. Other flags override file values.",  # noqa: E501
+            help="Optional YAML config file. Other flags override file.",
         )
         options = [config_file_option, *cls._collect_click_options()]
 
@@ -826,10 +717,7 @@ class Config:
         config_file = renamed.pop("config-file", None)
         if config_file is not None:
             p = pathlib.Path(config_file)
-            if p.suffix in (".yaml", ".yml"):
-                instance = cls.from_yaml(p.read_text())
-            else:
-                instance = cls.from_toml(p.read_text())
+            instance = cls.from_yaml(p.read_text())
 
         # Click uses None as its "option not provided" sentinel. Filter these
         # out before _apply_params so unset click options don't override the

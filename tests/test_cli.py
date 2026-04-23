@@ -375,13 +375,6 @@ class TestFromArgparseFile:
         assert cfg.n_sigma == 2.5
         assert cfg.mode == "balanced"
 
-    def test_toml_file(self, tmp_path):
-        toml_file = tmp_path / "config.toml"
-        toml_file.write_text('n_sigma = 7.0\nmode = "thorough"\n')
-        cfg = parse(FlatConfig, [str(toml_file)])
-        assert cfg.n_sigma == 7.0
-        assert cfg.mode == "thorough"
-
     def test_cli_overrides_file(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
         yaml_file.write_text("n_sigma: 2.5\nmode: balanced\n")

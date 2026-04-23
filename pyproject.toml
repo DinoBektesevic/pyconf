@@ -16,10 +16,9 @@ dependencies = []
 
 [project.optional-dependencies]
 yaml = ["pyyaml"]
-toml = ["tomli-w"]
 click = ["click"]
-all = ["pyyaml", "tomli-w", "click"]
-test = ["pytest", "ruff", "pyyaml", "tomli-w", "click"]
+all = ["pyyaml", "click"]
+test = ["pytest", "ruff", "pyyaml", "click"]
 docs = [
     "sphinx",
     "sphinx-autoapi",
