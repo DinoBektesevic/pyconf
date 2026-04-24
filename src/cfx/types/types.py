@@ -663,7 +663,9 @@ class Path(ConfigField):
             raise ValueError(f"Path does not exist: {value!r}")
 
     def serialize(self, value):  # noqa: D102
-        return str(value)
+        # as_posix() ensures forward slashes on all platforms; str() would
+        # produce backslashes on Windows, breaking cross-platform round-trips.
+        return value.as_posix()
 
     def deserialize(self, value):  # noqa: D102
         return pathlib.Path(value)
