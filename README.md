@@ -63,11 +63,12 @@ FormatConfig | encoding  | utf-8 | Output encoding
 - **Validated fields** — typos and bad values raise immediately at the point of assignment, not silently hours later.
 - **Self-documenting** — `print(cfg)` renders a tree of the config hierarchy followed by a unified table of all fields, nested included. In Jupyter the same layout renders as HTML automatically via `_repr_html_`.
 - **Composable** — assemble configs from multiple subsystem configs, nested or flat, with serialization, display, and CLI support throughout.
+- **Documented** — every field carries a doc string shown alongside its value. In large pipelines the same parameter name (e.g. `kernel_size`) can appear in multiple sub-configs targeting different stages; the doc string and the sub-config namespace keep the purpose clear at each site.
 - **Views** — project a config tree into a custom namespace. Expose a curated subset of fields under new names with `ConfigView`, auto-generate prefixed aliases with `AliasedView`, or enforce that two fields always stay in sync with `Mirror`.
-- **Serializable** — round-trip to/from dict, YAML, and TOML with one method call.
+- **Serializable** — round-trip to/from dict or YAML with one method call.
 - **CLI-ready** — every config exposes `add_arguments` / `from_argparse` for argparse and `click_options` / `from_click` for Click. Nested sub-configs use dot-notation flags (e.g. `--worker.threads`).
 - **Extensible** — subclass `ConfigField` to add your own field types with custom validation and normalization.
-- **Zero hard dependencies** — YAML, TOML, and Click support are optional.
+- **Zero hard dependencies** — YAML and Click support are optional.
 
 ## Installation
 
@@ -75,11 +76,10 @@ FormatConfig | encoding  | utf-8 | Output encoding
 pip install cfx
 ```
 
-With optional serialization and CLI backends:
+With optional backends:
 
 ```bash
 pip install "cfx[yaml]"   # adds PyYAML
-pip install "cfx[toml]"   # adds tomli-w
 pip install "cfx[click]"  # adds Click
 pip install "cfx[all]"    # everything
 ```
@@ -107,7 +107,7 @@ cfg["mode"] = "thorough"
 # Bad values raise immediately
 cfg.threshold = 1.5   # ValueError: Expected value <= 1.0, got 1.5
 
-# Serialize to dict, YAML, or TOML
+# Serialize to dict or YAML
 d = cfg.to_dict()
 cfg2 = ProcessingConfig.from_dict(d)
 
@@ -116,22 +116,20 @@ modified = cfg.copy(iterations=500)
 cfg.diff(modified)   # {'iterations': (200, 500)}
 ```
 
-For custom field types not expressible via annotations (custom validation,
-angular ranges, unit normalization), import explicit types from `cfx.types`:
+For field types not expressible via annotations — custom coercion, angular
+ranges, unit normalization — subclass `ConfigField` and override `normalize`
+and `validate`:
 
 ```python
-from cfx.types import Float, ConfigField
+from cfx.types import ConfigField
 
 class Angle(ConfigField):
-    def validate(self, value):
-        if not isinstance(value, (int, float)):
-            raise TypeError(f"Expected a number, got {type(value).__name__!r}")
+    def normalize(self, value):
+        return float(value) % 360.0   # wrap to [0, 360)
 
-    def __set__(self, obj, value):
-        if self.static:
-            raise AttributeError("Cannot set a static config field.")
-        self.validate(value)
-        setattr(obj, self.private_name, float(value) % 360.0)
+    def validate(self, value):
+        if not isinstance(value, float):
+            raise TypeError(f"Expected float, got {type(value).__name__!r}")
 ```
 
 ### Views

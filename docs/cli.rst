@@ -51,7 +51,7 @@ The flags registered for ``AppConfig`` are:
 .. code-block:: text
 
     positional:
-      config_file                                      Optional YAML or TOML config file.
+      config_file                                      Optional YAML config file.
                                                        CLI flags override file values.
 
     options:
@@ -96,10 +96,8 @@ value unchanged — they do not reset fields to their class defaults.
 
 .. note::
 
-   The config file format is inferred from the file extension.  Files with
-   ``.yaml`` or ``.yml`` extensions are parsed as YAML; everything else is
-   parsed as TOML.  Passing a YAML file with a ``.txt`` extension will cause
-   a TOML parse error.
+   Only ``.yaml`` and ``.yml`` extensions are supported.  Passing a file
+   with any other extension will fail at parse time.
 
 When you need to merge several configs into a single shared parser, pass
 ``prefix=`` explicitly::
@@ -140,7 +138,7 @@ The generated options mirror the argparse flags with two differences:
     Usage: run.py [OPTIONS]
 
     Options:
-      --config-file TEXT                         Optional YAML or TOML config file.
+      --config-file TEXT                         Optional YAML config file.
       --name TEXT                                Application name
       --debug / --no-debug                       Enable debug output
       --worker.threads INTEGER                   Worker threads

@@ -21,6 +21,7 @@ extensions = [
     "autoapi.extension",
     "myst_parser",
     "numpydoc",
+    "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.viewcode",
 ]

@@ -2,7 +2,7 @@ Custom Fields
 =============
 
 When the built-in types don't fit your domain — non-linear ranges, custom unit
-normalization, domain-specific enums — extend :class:`~cfx.ConfigField`
+normalization, domain-specific coercion — extend :class:`~cfx.ConfigField`
 directly.  This capability is intentionally preserved alongside
 annotation-native syntax: not every field can be expressed via annotations
 alone.
@@ -19,17 +19,15 @@ Import the base class from ``cfx.types``::
     class Angle(ConfigField):
         """An angle in degrees, stored normalized to [0, 360)."""
 
-        def validate(self, value):
-            if not isinstance(value, (int, float)):
-                raise TypeError(
-                    f"Angle requires a number, got {type(value).__name__!r}"
-                )
+        def normalize(self, value):
+            """Coerce to float and wrap to [0, 360)."""
+            return float(value) % 360.0
 
-        def __set__(self, obj, value):
-            if self.static:
-                raise AttributeError("Cannot set a static config field.")
-            self.validate(value)
-            setattr(obj, self.private_name, float(value) % 360.0)
+        def validate(self, value):
+            if not isinstance(value, float):
+                raise TypeError(
+                    f"Angle requires a float, got {type(value).__name__!r}"
+                )
 
 
     class SurveyConfig(Config):
@@ -47,78 +45,97 @@ Explicit field types and ``Field()``-declared fields can coexist freely on
 the same class.
 
 
-Normalizing defaultval
+Normalize and validate
 ----------------------
 
-When a custom ``__set__`` transforms values (e.g. ``Angle`` wraps degrees to
-``[0, 360)``), the transformation runs on every instance assignment but
-**not** on the raw ``default_value`` passed to ``ConfigField.__init__``.
-``Config.__init__`` seeds each field via ``setattr``, so instances do see the
-normalized value.  The descriptor's own ``defaultval`` attribute holds the
-original raw value.
+Every assignment (and the initial seeding of the default value) runs through
+the same two-step pipeline:
 
-This is only a problem if code inspects ``defaultval`` directly (e.g. for
-equality tests or documentation generation).  To keep things consistent,
-normalize in ``Angle.__init__`` as well::
+1. ``normalize(value)`` — transform the raw input to its canonical form.
+   Must be idempotent: ``normalize(normalize(x)) == normalize(x)`` (see
+   :ref:`sharp-edges-normalization` for when relaxing this is acceptable).
+2. ``validate(value)`` — check the normalized value against constraints.
+   Raise ``TypeError`` or ``ValueError`` on failure.
 
-    class Angle(ConfigField):
-        """An angle in degrees, stored normalized to [0, 360)."""
-
-        def __init__(self, default_value, doc, **kwargs):
-            if isinstance(default_value, (int, float)):
-                default_value = float(default_value) % 360.0
-            super().__init__(default_value, doc, **kwargs)
-
-        def validate(self, value):
-            if not isinstance(value, (int, float)):
-                raise TypeError(
-                    f"Angle requires a number, got {type(value).__name__!r}"
-                )
-
-        def __set__(self, obj, value):
-            if self.static:
-                raise AttributeError("Cannot set a static config field.")
-            self.validate(value)
-            setattr(obj, self.private_name, float(value) % 360.0)
-
+Both methods are called in ``ConfigField.__init__`` on the default, so
+``defaultval`` is always stored in its canonical (normalized) form::
 
     class SurveyConfig(Config):
-        heading = Angle(370.0, "Survey heading in degrees")
+        heading = Angle(370.0, "Heading")
 
-    SurveyConfig().heading                       # 10.0
-    type(SurveyConfig()).heading.defaultval      # 10.0 - also normalized
+    SurveyConfig().heading                   # 10.0 — normalized at access
+    type(SurveyConfig()).heading.defaultval  # 10.0 — also normalized
+
+Override only the methods you need.  The base implementations are no-ops —
+``normalize`` returns the value unchanged, ``validate`` accepts anything.
 
 
-How ``__set__`` and ``validate`` interact
------------------------------------------
+Extra constructor arguments
+---------------------------
 
-The base :meth:`ConfigField.__set__` does three things in order:
+Custom ``__init__`` parameters must be set *before* calling
+``super().__init__`` because the parent calls ``validate`` on the default::
 
-1. Checks ``self.static`` and raises ``AttributeError`` if set.
-2. Calls ``self.validate(value)`` to check the raw input.
-3. Stores the value directly in ``instance.__dict__`` under the private name.
+    import math
 
-When you override ``__set__`` to normalize a value, you take over the full
-storage path.  The recommended pattern is:
+    class LogScale(ConfigField):
+        """Value constrained to a log10-space interval."""
 
-1. Guard ``self.static`` yourself - ``super().__set__()`` is no longer called
-   so its guard is bypassed.
-2. Call ``self.validate(value)`` on the *raw* input before normalizing.
-3. Store the *normalized* value via ``setattr(obj, self.private_name, normalized)``.
+        def __init__(self, default, doc, log_min, log_max, **kwargs):
+            self.log_min = log_min
+            self.log_max = log_max
+            super().__init__(default, doc, **kwargs)
 
-This avoids double-validation (validate once on raw, store normalized) and
-keeps the check and the store close together.  :class:`~cfx.Path` follows
-the same pattern - it coerces strings to ``pathlib.Path`` before storing::
+        def validate(self, value):
+            log_val = math.log10(value)
+            if not (self.log_min <= log_val <= self.log_max):
+                raise ValueError(
+                    f"log10({value}) = {log_val:.2f} outside "
+                    f"[{self.log_min}, {self.log_max}]"
+                )
+
+
+Serialization hooks
+-------------------
+
+Override ``serialize`` and ``deserialize`` to control how a field value is
+stored in a dict or YAML file.  By default both are identity functions.
+
+The ``Path`` field, for example, converts to a plain string for serialization
+and back to ``pathlib.Path`` on load::
+
+    import pathlib
+
+    class MyPath(ConfigField):
+        def normalize(self, value):
+            if isinstance(value, str):
+                return pathlib.Path(value)
+            return value
+
+        def serialize(self, value):
+            return str(value)
+
+        def deserialize(self, value):
+            return pathlib.Path(value)
+
+``serialize`` is called by :meth:`~cfx.Config.to_dict` (and therefore
+``to_yaml``).  ``deserialize`` is called by :meth:`~cfx.Config.from_dict`
+before the value is passed through the normalize → validate pipeline.
+
+
+CLI hooks
+---------
+
+Override ``to_argparse_kwargs`` (or ``to_click_option``) to control how a
+field is exposed on the command line.  The base implementation returns a
+``type=from_string`` callable and an appropriate metavar; override only what
+differs from that default::
 
     class Angle(ConfigField):
-        def __set__(self, obj, value):
-            if self.static:                                       # 1. static guard
-                raise AttributeError("Cannot set a static config field.")
-            self.validate(value)                                  # 2. validate raw
-            setattr(obj, self.private_name, float(value) % 360.0)  # 3. store normalized
+        ...
 
-.. important::
-
-   Any ``__set__`` override that bypasses ``super().__set__()`` **must**
-   re-check ``self.static`` itself.  Forgetting this makes the static flag
-   silently ineffective for that field type.
+        def to_argparse_kwargs(self, name, prefix=""):
+            kwargs = super().to_argparse_kwargs(name, prefix)
+            kwargs["metavar"] = "DEG"
+            kwargs["help"] = f"{self.doc} (any value, wrapped to [0, 360))"
+            return kwargs

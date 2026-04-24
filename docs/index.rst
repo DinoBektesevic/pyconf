@@ -57,18 +57,21 @@ integration, and a self-documenting display for free::
 - **Composable** — assemble configs from multiple subsystem configs into a
   nested hierarchy, each sub-config accessible by name. Serialize, display,
   and address from the CLI with consistent dot-notation throughout.
+- **Documented** — every field carries a doc string shown alongside its value.
+  In large pipelines the same parameter name (e.g. ``kernel_size``) can appear
+  in multiple sub-configs targeting different stages; the doc string and the
+  sub-config namespace keep the purpose clear at each site.
 - **Views** — project any config tree into a custom namespace.  Expose a
   curated subset of fields under new names with :class:`~cfx.ConfigView`,
   auto-generate prefixed aliases with :class:`~cfx.AliasedView`, or keep two
   fields in sync with :class:`~cfx.Mirror`.
-- **Serializable** — round-trip to/from dict, YAML, and TOML with one method
-  call.
+- **Serializable** — round-trip to/from dict or YAML with one method call.
 - **CLI-ready** — every config exposes ``add_arguments`` / ``from_argparse``
   for argparse and ``click_options`` / ``from_click`` for Click.  Nested
   sub-configs use dot-notation flags (e.g. ``--worker.threads``).
 - **Extensible** — subclass :class:`~cfx.ConfigField` to add your own field
   types with custom validation and normalization.
-- **Zero hard dependencies** — YAML, TOML, and Click support are optional.
+- **Zero hard dependencies** — YAML and Click support are optional.
 
 .. toctree::
    :maxdepth: 2
@@ -85,6 +88,7 @@ integration, and a self-documenting display for free::
    cli
    sharp-edges
    advanced
+   examples
 
 .. toctree::
    :maxdepth: 1

@@ -28,12 +28,15 @@ class FieldRef:
 
     Examples
     --------
+    >>> from cfx import Config, Field, Alias
     >>> class Inner(Config):
-    ...     x = Float(1.0, "x value")
+    ...     x: float = Field(1.0, "x value")
     >>> class Outer(Config, components=[Inner]):
     ...     pass
-    >>> Outer.inner.x          # FieldRef("inner.x")
-    >>> Alias(Outer.inner.x)   # preferred over Alias("inner.x")
+    >>> Outer.inner.x          # doctest: +ELLIPSIS
+    FieldRef(...)
+    >>> Alias(Outer.inner.x)   # doctest: +ELLIPSIS
+    <...Alias object at ...>
     """
 
     def __init__(self, path: str, resolved_cls):

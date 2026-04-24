@@ -27,10 +27,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: pip install -e ".[test]"
+        run: pip install -e ".[test,docs]"
 
       - name: Lint
         run: ruff check src/ tests/
 
       - name: Test
-        run: pytest tests/ -W error
+        run: pytest -W error
+
+      - name: Docs
+        run: sphinx-build -b doctest docs docs/_build/doctest -W

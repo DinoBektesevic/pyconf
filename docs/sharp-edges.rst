@@ -3,7 +3,7 @@ Sharp edges
 
 This page documents subtle behaviors you may encounter with advanced
 features.  Most users won't hit these, but they're important to understand
-when using callable defaults, TOML serialization, or CLI string parsing.
+when using callable defaults or CLI string parsing.
 
 
 .. _sharp-edges:
@@ -81,25 +81,6 @@ Keep the dependency graph acyclic: derived fields should only read
 earlier-declared fields that have plain defaults.
 
 
-TOML drops ``None`` values
---------------------------
-
-``to_toml()`` silently omits any field whose current value is ``None``,
-because TOML has no null type.  After a TOML round-trip the field reverts
-to its class default rather than ``None``::
-
-    class C(Config):
-        label = String(None, "Optional label")
-
-    cfg = C()
-    cfg.label = None
-    cfg2 = C.from_toml(cfg.to_toml())
-    cfg2.label   # None - the default, not the stored None
-
-``to_dict()`` and ``to_yaml()`` preserve ``None`` values.  If you must
-round-trip ``None`` through TOML, use a sentinel instead.
-
-
 ``List.from_string`` falls back silently on bad JSON
 -----------------------------------------------------
 
@@ -118,18 +99,17 @@ pass well-formed JSON arrays from the environment.
 Normalization and the descriptor's defaultval
 ---------------------------------------------
 
-When a custom ``__set__`` normalizes values (as ``Angle`` does - see
-:doc:`fields`), the transformation runs on every *instance* assignment
-including the one ``Config.__init__`` makes when seeding the initial value.
-The descriptor's own ``defaultval`` is validated but **not** transformed::
+``ConfigField.__init__`` runs the default through ``normalize()`` before
+storing it, so ``defaultval`` is always in canonical form.  Instances and
+the descriptor's ``defaultval`` agree::
 
     class SurveyConfig(Config):
         heading = Angle(370.0, "Heading in degrees")
 
-    SurveyConfig().heading                       # 10.0  - normalized
-    type(SurveyConfig()).heading.defaultval      # 370.0 - raw, not normalized
+    SurveyConfig().heading                       # 10.0 — normalized
+    type(SurveyConfig()).heading.defaultval      # 10.0 — also normalized
 
-This is usually harmless because instances always see the normalized value.
-If you need the descriptor's ``defaultval`` to be normalized too (e.g. for
-introspection or equality checks), normalize it in ``Angle.__init__``.
-See :doc:`advanced` for the full pattern.
+This relies on ``normalize`` being idempotent.  If your ``normalize``
+depends on instance state (rare), the class-level default may not match
+what an instance would compute — keep ``normalize`` a pure function of
+``value`` to avoid surprises.

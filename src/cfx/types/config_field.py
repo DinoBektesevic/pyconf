@@ -72,7 +72,8 @@ class ConfigField(Generic[T]):
 
     Examples
     --------
-    >>> from pyconf import Config, ConfigField
+    >>> from cfx import Config
+    >>> from cfx.types import ConfigField
     >>> class MyConfig(Config):
     ...     name = ConfigField("default", "A simple untyped field")
     >>> cfg = MyConfig()

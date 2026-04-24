@@ -1,12 +1,15 @@
 Advanced Usage
 ==============
 
+.. _cross-field-validation:
+
 Cross-field validation
 ----------------------
 
-Override :meth:`~cfx.Config.validate` to enforce relationships between
-fields.  ``validate()`` is called automatically after deserialization and
-can be called manually at any time::
+Override :meth:`~cfx.Config.validate` on the **Config subclass** (not on
+individual fields) to enforce relationships between fields.  ``validate()``
+is called automatically after deserialization and after
+:meth:`~cfx.Config.update`, and can be called manually at any time::
 
     from cfx import Config, Field
 

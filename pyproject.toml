@@ -40,7 +40,8 @@ where = ["src"]
 [tool.setuptools_scm]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "src"]
+addopts = "--doctest-modules"
 
 [tool.ruff]
 line-length = 79

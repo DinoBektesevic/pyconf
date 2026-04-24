@@ -61,22 +61,22 @@ class Config:
 
     Examples
     --------
-    >>> from pyconf import Config, Float, Options
+    >>> from cfx import Config, Field
     >>> class BaseConfig(Config):
-    ...     confid  = "base"
-    ...     field1  = Float(5.0, "A float field", minval=0.0)
-    ...     field2  = Options(("opt_a", "opt_b"), "An options field")
+    ...     confid = "base"
+    ...     n: int = Field(5, "An integer field", minval=0)
+    ...     label: str = Field("default", "A label")
     >>> cfg = BaseConfig()
-    >>> cfg.field1
-    5.0
-    >>> cfg.field1 = 3.0
-    >>> cfg["field2"] = "opt_b"
+    >>> cfg.n
+    5
+    >>> cfg.n = 3
+    >>> cfg["label"] = "custom"
     >>> print(cfg)  # doctest: +SKIP
     BaseConfig:
-    Key    | Value | Description
-    -------+-------+----------------
-    field1 | 3.0   | A float field
-    field2 | opt_b | An options field
+    Key   | Value  | Description
+    ------+--------+----------------
+    n     | 3      | An integer field
+    label | custom | A label
     """
 
     confid: str = "config"
@@ -180,9 +180,10 @@ class Config:
 
         Examples
         --------
+        >>> from cfx import Config, Field
         >>> class BandConfig(Config):
-        ...     low  = Float(1.0, "Lower bound", minval=0.0)
-        ...     high = Float(2.0, "Upper bound", minval=0.0)
+        ...     low: float = Field(1.0, "Lower bound", minval=0.0)
+        ...     high: float = Field(2.0, "Upper bound", minval=0.0)
         ...
         ...     def validate(self):
         ...         if self.high <= self.low:
@@ -372,8 +373,14 @@ class Config:
 
         Examples
         --------
-        >>> base = BaseConfig()
-        >>> modified = base.copy(field1="new", field2=9.9)
+        >>> from cfx import Config, Field
+        >>> class C(Config):
+        ...     x: int = Field(1, "x")
+        ...     y: str = Field("hello", "y")
+        >>> base = C()
+        >>> modified = base.copy(x=42, y="world")
+        >>> modified.x, modified.y
+        (42, 'world')
         """
         new = self.__class__.__new__(self.__class__)
 

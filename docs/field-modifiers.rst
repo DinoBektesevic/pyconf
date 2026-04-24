@@ -2,9 +2,23 @@ Field Modifiers
 ===============
 
 Field modifiers are keyword arguments that change how a field stores or
-resolves its value.  They apply to any field regardless of declaration style —
-inferred, explicit, or custom (see :doc:`fields`).
+resolves its value.  They apply to any field regardless of declaration style -
+inferred, explicit, or custom (see :doc:`fields`).  Understanding when and how
+each modifier's side-effects take place matters because the default behaviour
+may or may not be what you need:
 
+- A **computed field** has a callable default evaluated on every read where no
+  explicit value has been stored.  By default it is omitted from serialization
+  and the formula reconstructs on load, but you may prefer to snapshot the
+  evaluated value instead (e.g. set ``transient=False``, see :ref:`transient-fields`).
+- A **static field** is immutable at the instance level, assignment raises
+  immediately, and the class-defined value is always what gets serialized.
+- An **env field** reads from the environment variable on every access.  If you
+  need the value fixed at a point in time rather than re-evaluated on each read,
+  assign it explicitly to freeze it.
+
+
+.. _computed-fields:
 
 Computed fields
 ---------------
@@ -28,7 +42,38 @@ has been stored::
 
 Callable defaults are skipped during serialization when no explicit value
 has been stored — they reconstruct from the class definition on load.
-See :ref:`sharp-edges-serialization` for edge cases.
+See :ref:`sharp-edges-serialization` for serialization edge cases and
+:ref:`sharp-edges-copy` for how computed fields interact with ``copy()``.
+
+
+.. _transient-fields:
+
+Transient fields
+----------------
+
+By default, a computed field is transient: it is omitted from serialization
+when no explicit value has been stored.  Set ``transient=False`` to override
+this and serialize the currently evaluated value as a snapshot instead::
+
+    class DetectionConfig(Config):
+        stddev: float = Field(1.0, "Measured standard deviation")
+        sigma5: float = Field(
+            lambda self: self.stddev * 5,
+            "5-sigma threshold",
+            transient=False,  # snapshot the evaluated value on save
+        )
+
+    cfg = DetectionConfig()
+    cfg.stddev = 2.0
+    d = cfg.to_dict()
+    # {'stddev': 2.0, 'sigma5': 10.0} — sigma5 included despite no explicit set
+
+    cfg2 = DetectionConfig.from_dict(d)
+    cfg2.sigma5    # 10.0 — loaded from dict; formula bypassed
+
+This is useful when the formula depends on external state that may not be
+reproducible at load time — timestamps, random seeds, hardware queries.  The
+loaded value is treated as an explicit assignment; the formula is not called.
 
 
 Static fields

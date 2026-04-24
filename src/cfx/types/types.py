@@ -87,7 +87,8 @@ class Options(ConfigField):
 
     Examples
     --------
-    >>> from pyconf import Config, Options
+    >>> from cfx import Config
+    >>> from cfx.types import Options
     >>> class BaseConfig(Config):
     ...     mode = Options(("fast", "balanced", "thorough"), "Processing mode")
     >>> cfg = BaseConfig()
@@ -171,7 +172,8 @@ class MultiOptions(ConfigField):
 
     Examples
     --------
-    >>> from pyconf import Config, MultiOptions
+    >>> from cfx import Config
+    >>> from cfx.types import MultiOptions
     >>> class PipelineConfig(Config):
     ...     steps = MultiOptions(
     ...         ("preprocess", "detect", "cluster", "output"),

@@ -1,11 +1,10 @@
 Serialization
 =============
 
-Configs can be persisted to a dict, YAML, or TOML.  Choose based on context:
+Configs can be persisted to a dict or YAML.  Choose based on context:
 
 - **dict** - programmatic use, in-process transfer
 - **YAML** - human-readable files, easy to hand-edit
-- **TOML** - structured config files with strong typing
 
 
 dict
@@ -46,23 +45,6 @@ For ``ProcessingConfig`` with default values the output looks like:
 
 Nested configs produce a nested YAML structure keyed by ``confid``.
 
-
-TOML
-----
-
-TOML round-trips require ``tomli-w`` to write and ``tomllib`` (stdlib,
-Python >= 3.11) or ``tomli`` to read::
-
-    toml_str = cfg.to_toml()                           # pip install tomli-w
-    cfg5     = ProcessingConfig.from_toml(toml_str)    # tomllib or tomli
-
-.. warning::
-
-   ``to_toml()`` silently drops fields whose value is ``None``, because
-   TOML has no null type.  ``to_dict()`` and ``to_yaml()`` preserve ``None``
-   values.  If you need to round-trip ``None`` through TOML, use a sentinel
-   value instead (e.g. ``-1`` for a seed or an empty string for optional
-   text).
 
 .. note::
 
