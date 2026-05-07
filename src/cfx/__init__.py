@@ -10,7 +10,7 @@ on the class that uses them, using annotations and ``Field()``::
         \"\"\"Configuration for the main search algorithm.\"\"\"
         confid = "search"
 
-        n_sigma: float = Field(5.0, "Detection threshold", minval=0.0)
+        n_sigma: float = Field(5.0, "Detection threshold", ge=0.0)
         method: Literal["DBSCAN", "RANSAC"] = Field("DBSCAN", "Algorithm")
         debug: bool = Field(False, "Enable verbose debug output")
 

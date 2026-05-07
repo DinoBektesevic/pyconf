@@ -74,9 +74,9 @@ directly::
     from cfx.types import Float, Options, String
 
     class ProcessingConfig(Config):
-        threshold = Float(0.5, "Acceptance threshold", minval=0.0, maxval=1.0)
+        threshold = Float(0.5, "Acceptance threshold", ge=0.0, le=1.0)
         mode = Options(("fast", "balanced"), "Processing mode")
-        label = String("run_01", "Human-readable run label", maxsize=64)
+        label = String("run_01", "Human-readable run label", max_length=64)
 
 .. note::
 
@@ -97,16 +97,16 @@ directly::
 | :class:`~cfx.Bool`           | ``True`` or ``False``. Rejects ``int`` — unlike Python's own           |
 |                              | truthiness, ``1`` is not a ``bool`` here.                              |
 +------------------------------+------------------------------------------------------------------------+
-| :class:`~cfx.Int`            | Integer. Optional ``minval`` and ``maxval``.                           |
+| :class:`~cfx.Int`            | Integer. Optional ``ge``, ``gt``, ``le``, ``lt``, ``multiple_of``.     |
 +------------------------------+------------------------------------------------------------------------+
-| :class:`~cfx.Float`          | Float. Also accepts ``int`` on assignment. Optional ``minval`` and     |
-|                              | ``maxval``.                                                            |
+| :class:`~cfx.Float`          | Float. Also accepts ``int`` on assignment. Same constraints as         |
+|                              | ``Int``.                                                               |
 +------------------------------+------------------------------------------------------------------------+
-| :class:`~cfx.Scalar`         | Either ``int`` or ``float``. Use when both are acceptable. Optional    |
-|                              | ``minval`` and ``maxval``.                                             |
+| :class:`~cfx.Scalar`         | Either ``int`` or ``float``. Use when both are acceptable. Same        |
+|                              | constraints as ``Int``.                                                |
 +------------------------------+------------------------------------------------------------------------+
-| :class:`~cfx.String`         | Text string. Optional ``minsize``, ``maxsize``, and ``predicate`` (a   |
-|                              | callable that returns ``True`` for valid values).                      |
+| :class:`~cfx.String`         | Text string. Optional ``min_length``, ``max_length``, ``pattern``      |
+|                              | (regex), and ``predicate`` (callable; not schema-visible).             |
 +------------------------------+------------------------------------------------------------------------+
 | :class:`~cfx.Options`        | One value from a fixed set. Default is the first option unless         |
 |                              | ``default_value`` is supplied.                                         |
@@ -121,7 +121,7 @@ directly::
 +------------------------------+------------------------------------------------------------------------+
 | :class:`~cfx.Range`          | A ``(min, max)`` tuple. Validates ``min < max``.                       |
 +------------------------------+------------------------------------------------------------------------+
-| :class:`~cfx.List`           | A list. Optional ``element_type``, ``minlen``, and ``maxlen``.         |
+| :class:`~cfx.List`           | A list. Optional ``element_type``, ``min_length``, ``max_length``.     |
 +------------------------------+------------------------------------------------------------------------+
 | :class:`~cfx.Dict`           | An untyped dict. Useful for free-form sub-structure that is too loose  |
 |                              | to warrant a nested :class:`~cfx.Config`.                              |
@@ -146,15 +146,15 @@ The recommended way to declare config fields is with a type annotation and
 
     class ProcessingConfig(Config):
         confid = "processing"
-        iterations: int = Field(100, "Number of iterations", minval=1)
-        threshold: float = Field(0.5, "Acceptance threshold", minval=0.0, maxval=1.0)
+        iterations: int = Field(100, "Number of iterations", ge=1)
+        threshold: float = Field(0.5, "Acceptance threshold", ge=0.0, le=1.0)
         label: str = Field("run_01", "Human-readable run label")
         mode: Literal["fast", "balanced", "thorough"] = Field("fast", "Processing mode")
         verbose: bool = Field(False, "Enable verbose logging")
 
 The concrete field type is inferred from the annotation at class-definition
 time.  Any constraint keyword accepted by the underlying type can be passed
-directly to ``Field()`` (e.g. ``minval=``, ``maxval=``, ``env=``,
+directly to ``Field()`` (e.g. ``ge=``, ``le=``, ``env=``,
 ``static=``).
 
 Static and runtime validation
@@ -164,7 +164,7 @@ Adding a type annotation enables **static** type checking: mypy, pyright, and
 IDEs can verify that only the right type is assigned to the field without
 running any code.  All field types — inferred, explicit, and custom — perform
 **runtime** validation at every assignment, enforcing constraints such as
-``minval=`` or option membership.  Value constraints (e.g. "must be > 0") are
+``ge=`` or option membership.  Value constraints (e.g. "must be > 0") are
 inherently runtime concerns and are not expected to be checked statically.
 
 Explicit field types give dynamic checking but lose the static annotation,
@@ -182,13 +182,14 @@ explicit field type.
 +=======================================+===========================+==========================================+
 | ``bool``                              | :class:`~cfx.Bool`        |                                          |
 +---------------------------------------+---------------------------+------------------------------------------+
-| ``int``                               | :class:`~cfx.Int`         | Optional ``minval``, ``maxval``          |
+| ``int``                               | :class:`~cfx.Int`         | Optional ``ge``, ``gt``, ``le``, ``lt``, |
+|                                       |                           | ``multiple_of``                          |
 +---------------------------------------+---------------------------+------------------------------------------+
-| ``float``                             | :class:`~cfx.Float`       | Optional ``minval``, ``maxval``; also    |
+| ``float``                             | :class:`~cfx.Float`       | Same constraints as ``int``; also        |
 |                                       |                           | accepts ``int``                          |
 +---------------------------------------+---------------------------+------------------------------------------+
-| ``str``                               | :class:`~cfx.String`      | Optional ``minsize``, ``maxsize``,       |
-|                                       |                           | ``predicate``                            |
+| ``str``                               | :class:`~cfx.String`      | Optional ``min_length``, ``max_length``, |
+|                                       |                           | ``pattern``, ``predicate``               |
 +---------------------------------------+---------------------------+------------------------------------------+
 | ``pathlib.Path``                      | :class:`~cfx.Path`        | Optional ``must_exist=True``             |
 +---------------------------------------+---------------------------+------------------------------------------+
@@ -196,8 +197,8 @@ explicit field type.
 +---------------------------------------+---------------------------+------------------------------------------+
 | ``set[Literal["a", "b"]]``            | :class:`~cfx.MultiOptions`|                                          |
 +---------------------------------------+---------------------------+------------------------------------------+
-| ``list[T]``                           | :class:`~cfx.List`        | Optional ``element_type``, ``minlen``,   |
-|                                       |                           | ``maxlen``                               |
+| ``list[T]``                           | :class:`~cfx.List`        | Optional ``element_type``,               |
+|                                       |                           | ``min_length``, ``max_length``           |
 +---------------------------------------+---------------------------+------------------------------------------+
 | ``tuple[T, T]``                       | :class:`~cfx.Range`       | Validates ``min < max``                  |
 +---------------------------------------+---------------------------+------------------------------------------+

@@ -21,8 +21,8 @@ integration, and a self-documenting display for free::
     class WorkerConfig(Config, components=[FormatConfig]):
         """Worker settings."""
         confid = "worker"
-        threads: int = Field(4, "Worker threads", minval=1)
-        timeout: float = Field(30.0, "Request timeout in seconds", minval=0.0)
+        threads: int = Field(4, "Worker threads", ge=1)
+        timeout: float = Field(30.0, "Request timeout in seconds", ge=0.0)
 
     class AppConfig(Config, components=[WorkerConfig]):
         """Application configuration."""
@@ -30,11 +30,32 @@ integration, and a self-documenting display for free::
         name: str = Field("myapp", "Application name")
         debug: bool = Field(False, "Enable debug output")
 
-    cfg = AppConfig()
-    print(cfg)
+.. testsetup::
 
-.. code-block:: text
+    from cfx import Config, Field
 
+    class FormatConfig(Config):
+        """Output formatting."""
+        confid = "format"
+        precision: int = Field(6, "Decimal places")
+        encoding: str = Field("utf-8", "Output encoding")
+
+    class WorkerConfig(Config, components=[FormatConfig]):
+        """Worker settings."""
+        confid = "worker"
+        threads: int = Field(4, "Worker threads", ge=1)
+        timeout: float = Field(30.0, "Request timeout in seconds", ge=0.0)
+
+    class AppConfig(Config, components=[WorkerConfig]):
+        """Application configuration."""
+        confid = "app"
+        name: str = Field("myapp", "Application name")
+        debug: bool = Field(False, "Enable debug output")
+
+.. doctest::
+
+    >>> cfg = AppConfig()
+    >>> print(cfg)  # doctest: +NORMALIZE_WHITESPACE
     AppConfig: Application configuration.
     └─ WorkerConfig: Worker settings.
         └─ FormatConfig: Output formatting.

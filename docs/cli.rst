@@ -23,8 +23,8 @@ The examples below use the three-level hierarchy from the front page::
     class WorkerConfig(Config, components=[FormatConfig]):
         """Worker settings."""
         confid = "worker"
-        threads = Int(4, "Worker threads", minval=1)
-        timeout = Float(30.0, "Request timeout in seconds", minval=0.0)
+        threads = Int(4, "Worker threads", ge=1)
+        timeout = Float(30.0, "Request timeout in seconds", ge=0.0)
 
     class AppConfig(Config, components=[WorkerConfig]):
         """Application configuration."""

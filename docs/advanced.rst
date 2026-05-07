@@ -14,8 +14,8 @@ is called automatically after deserialization and after
     from cfx import Config, Field
 
     class BandConfig(Config):
-        low: float = Field(1.0, "Lower frequency bound", minval=0.0)
-        high: float = Field(2.0, "Upper frequency bound", minval=0.0)
+        low: float = Field(1.0, "Lower frequency bound", ge=0.0)
+        high: float = Field(2.0, "Upper frequency bound", ge=0.0)
 
         def validate(self):
             if self.high <= self.low:
@@ -23,8 +23,26 @@ is called automatically after deserialization and after
                     f"high ({self.high}) must be greater than low ({self.low})"
                 )
 
-    BandConfig.from_dict({"low": 5.0, "high": 1.0})
-    # ValueError: high (1.0) must be greater than low (5.0)
+.. testsetup::
+
+    from cfx import Config, Field
+
+    class BandConfig(Config):
+        low: float = Field(1.0, "Lower frequency bound", ge=0.0)
+        high: float = Field(2.0, "Upper frequency bound", ge=0.0)
+
+        def validate(self):
+            if self.high <= self.low:
+                raise ValueError(
+                    f"high ({self.high}) must be greater than low ({self.low})"
+                )
+
+.. doctest::
+
+    >>> BandConfig.from_dict({"low": 5.0, "high": 1.0})
+    Traceback (most recent call last):
+        ...
+    ValueError: high (1.0) must be greater than low (5.0)
 
 HTML rendering
 --------------

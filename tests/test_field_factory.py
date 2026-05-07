@@ -118,23 +118,23 @@ def test_union_int_float_inferred():
 
 class WithKwargs(Config):
     confid = "kwargs"
-    x: int = Field(0, "bounded int", minval=0, maxval=10)
-    name: str = Field("default", "bounded str", minsize=1)
+    x: int = Field(0, "bounded int", ge=0, le=10)
+    name: str = Field("default", "bounded str", min_length=1)
 
 
-def test_kwargs_pass_through_minval():
+def test_kwargs_pass_through_ge():
     cfg = WithKwargs()
     with pytest.raises(ValueError):
         cfg.x = -1
 
 
-def test_kwargs_pass_through_maxval():
+def test_kwargs_pass_through_le():
     cfg = WithKwargs()
     with pytest.raises(ValueError):
         cfg.x = 11
 
 
-def test_kwargs_pass_through_minsize():
+def test_kwargs_pass_through_min_length():
     cfg = WithKwargs()
     with pytest.raises(ValueError):
         cfg.name = ""

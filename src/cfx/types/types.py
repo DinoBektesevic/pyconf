@@ -9,6 +9,7 @@ import datetime
 import json
 import numbers
 import pathlib
+import re
 
 from ..refs import FieldRef
 from ..utils import walk, walk_set
@@ -267,14 +268,18 @@ class String(ConfigField):
         Default string value or lazy factory returning a `str`.
     doc : `str`
         Documentation.
-    minsize : `int`, optional
+    min_length : `int`, optional
         Minimum allowed string length. Default is ``0``.
-    maxsize : `int` or `None`, optional
+    max_length : `int` or `None`, optional
         Maximum allowed string length. `None` means no upper limit.
+        Default is `None`.
+    pattern : `str` or `None`, optional
+        Regex pattern the value must fully match (``re.fullmatch``).
         Default is `None`.
     predicate : `callable` or `None`, optional
         Additional validation callable that accepts a `str` and returns
-        `True` if the value is valid. Default is `None`.
+        `True` if the value is valid. Not expressible in JSON Schema; use
+        ``pattern=`` when a regex is sufficient. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -284,22 +289,25 @@ class String(ConfigField):
     TypeError
         If the value is not a `str`.
     ValueError
-        If the value does not satisfy the length or predicate constraints.
+        If the value does not satisfy the length, pattern, or predicate
+        constraints.
     """
 
     def __init__(
         self,
         default_value,
         doc,
-        minsize=0,
-        maxsize=None,
+        min_length=0,
+        max_length=None,
+        pattern=None,
         predicate=None,
         static=False,
         env=None,
         transient=None,
     ):
-        self.minsize = minsize
-        self.maxsize = maxsize
+        self.min_length = min_length
+        self.max_length = max_length
+        self.pattern = pattern
         self.predicate = predicate
         super().__init__(
             default_value,
@@ -312,15 +320,19 @@ class String(ConfigField):
     def validate(self, value):  # noqa: D102
         if not isinstance(value, str):
             raise TypeError(f"Expected a str, got {type(value).__name__!r}")
-        if len(value) < self.minsize:
+        if len(value) < self.min_length:
             raise ValueError(
-                f"Expected string of at least {self.minsize} characters, "
+                f"Expected string of at least {self.min_length} characters, "
                 f"got {len(value)}"
             )
-        if self.maxsize is not None and len(value) > self.maxsize:
+        if self.max_length is not None and len(value) > self.max_length:
             raise ValueError(
-                f"Expected string of at most {self.maxsize} characters, "
+                f"Expected string of at most {self.max_length} characters, "
                 f"got {len(value)}"
+            )
+        if self.pattern is not None and not re.fullmatch(self.pattern, value):
+            raise ValueError(
+                f"Value {value!r} does not match pattern {self.pattern!r}"
             )
         if self.predicate is not None and not self.predicate(value):
             raise ValueError(
@@ -340,10 +352,16 @@ class Scalar(ConfigField):
         Default numeric value or lazy factory returning a number.
     doc : `str`
         Documentation.
-    minval : `numbers.Number` or `None`, optional
-        Minimum allowed value (inclusive). Default is `None`.
-    maxval : `numbers.Number` or `None`, optional
-        Maximum allowed value (inclusive). Default is `None`.
+    ge : `numbers.Number` or `None`, optional
+        Minimum allowed value (inclusive, ``>=``). Default is `None`.
+    gt : `numbers.Number` or `None`, optional
+        Strict lower bound (exclusive, ``>``). Default is `None`.
+    le : `numbers.Number` or `None`, optional
+        Maximum allowed value (inclusive, ``<=``). Default is `None`.
+    lt : `numbers.Number` or `None`, optional
+        Strict upper bound (exclusive, ``<``). Default is `None`.
+    multiple_of : `numbers.Number` or `None`, optional
+        Value must be a multiple of this. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -353,21 +371,27 @@ class Scalar(ConfigField):
     TypeError
         If the value is not a `numbers.Number`.
     ValueError
-        If the value is outside [``minval``, ``maxval``].
+        If the value violates any bound or ``multiple_of`` constraint.
     """
 
     def __init__(
         self,
         default_value,
         doc,
-        minval=None,
-        maxval=None,
+        ge=None,
+        gt=None,
+        le=None,
+        lt=None,
+        multiple_of=None,
         static=False,
         env=None,
         transient=None,
     ):
-        self.minval = minval
-        self.maxval = maxval
+        self.ge = ge
+        self.gt = gt
+        self.le = le
+        self.lt = lt
+        self.multiple_of = multiple_of
         super().__init__(
             default_value,
             doc,
@@ -393,13 +417,17 @@ class Scalar(ConfigField):
             raise TypeError(
                 f"Expected a numeric value, got {type(value).__name__!r}"
             )
-        if self.minval is not None and value < self.minval:
+        if self.gt is not None and not (value > self.gt):
+            raise ValueError(f"Expected value > {self.gt!r}, got {value!r}")
+        if self.ge is not None and not (value >= self.ge):
+            raise ValueError(f"Expected value >= {self.ge!r}, got {value!r}")
+        if self.lt is not None and not (value < self.lt):
+            raise ValueError(f"Expected value < {self.lt!r}, got {value!r}")
+        if self.le is not None and not (value <= self.le):
+            raise ValueError(f"Expected value <= {self.le!r}, got {value!r}")
+        if self.multiple_of is not None and value % self.multiple_of != 0:
             raise ValueError(
-                f"Expected value >= {self.minval!r}, got {value!r}"
-            )
-        if self.maxval is not None and value > self.maxval:
-            raise ValueError(
-                f"Expected value <= {self.maxval!r}, got {value!r}"
+                f"Expected multiple of {self.multiple_of!r}, got {value!r}"
             )
 
 
@@ -412,10 +440,16 @@ class Int(ConfigField):
         Default integer value or lazy factory returning an `int`.
     doc : `str`
         Documentation.
-    minval : `int` or `None`, optional
-        Minimum allowed value (inclusive). Default is `None`.
-    maxval : `int` or `None`, optional
-        Maximum allowed value (inclusive). Default is `None`.
+    ge : `int` or `None`, optional
+        Minimum allowed value (inclusive, ``>=``). Default is `None`.
+    gt : `int` or `None`, optional
+        Strict lower bound (exclusive, ``>``). Default is `None`.
+    le : `int` or `None`, optional
+        Maximum allowed value (inclusive, ``<=``). Default is `None`.
+    lt : `int` or `None`, optional
+        Strict upper bound (exclusive, ``<``). Default is `None`.
+    multiple_of : `int` or `None`, optional
+        Value must be a multiple of this. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -427,21 +461,27 @@ class Int(ConfigField):
     TypeError
         If the value is not an `int`.
     ValueError
-        If the value is outside [``minval``, ``maxval``].
+        If the value violates any bound or ``multiple_of`` constraint.
     """
 
     def __init__(
         self,
         default_value,
         doc,
-        minval=None,
-        maxval=None,
+        ge=None,
+        gt=None,
+        le=None,
+        lt=None,
+        multiple_of=None,
         static=False,
         env=None,
         transient=None,
     ):
-        self.minval = minval
-        self.maxval = maxval
+        self.ge = ge
+        self.gt = gt
+        self.le = le
+        self.lt = lt
+        self.multiple_of = multiple_of
         super().__init__(
             default_value,
             doc,
@@ -461,13 +501,17 @@ class Int(ConfigField):
     def validate(self, value):  # noqa: D102
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError(f"Expected an int, got {type(value).__name__!r}")
-        if self.minval is not None and value < self.minval:
+        if self.gt is not None and not (value > self.gt):
+            raise ValueError(f"Expected value > {self.gt!r}, got {value!r}")
+        if self.ge is not None and not (value >= self.ge):
+            raise ValueError(f"Expected value >= {self.ge!r}, got {value!r}")
+        if self.lt is not None and not (value < self.lt):
+            raise ValueError(f"Expected value < {self.lt!r}, got {value!r}")
+        if self.le is not None and not (value <= self.le):
+            raise ValueError(f"Expected value <= {self.le!r}, got {value!r}")
+        if self.multiple_of is not None and value % self.multiple_of != 0:
             raise ValueError(
-                f"Expected value >= {self.minval!r}, got {value!r}"
-            )
-        if self.maxval is not None and value > self.maxval:
-            raise ValueError(
-                f"Expected value <= {self.maxval!r}, got {value!r}"
+                f"Expected multiple of {self.multiple_of!r}, got {value!r}"
             )
 
 
@@ -480,10 +524,16 @@ class Float(ConfigField):
         Default float value or lazy factory returning a `float`.
     doc : `str`
         Documentation.
-    minval : `float` or `None`, optional
-        Minimum allowed value (inclusive). Default is `None`.
-    maxval : `float` or `None`, optional
-        Maximum allowed value (inclusive). Default is `None`.
+    ge : `float` or `None`, optional
+        Minimum allowed value (inclusive, ``>=``). Default is `None`.
+    gt : `float` or `None`, optional
+        Strict lower bound (exclusive, ``>``). Default is `None`.
+    le : `float` or `None`, optional
+        Maximum allowed value (inclusive, ``<=``). Default is `None`.
+    lt : `float` or `None`, optional
+        Strict upper bound (exclusive, ``<``). Default is `None`.
+    multiple_of : `float` or `None`, optional
+        Value must be a multiple of this. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -495,21 +545,27 @@ class Float(ConfigField):
     TypeError
         If the value is not a `float` or `int` (ints are coerced).
     ValueError
-        If the value is outside [``minval``, ``maxval``].
+        If the value violates any bound or ``multiple_of`` constraint.
     """
 
     def __init__(
         self,
         default_value,
         doc,
-        minval=None,
-        maxval=None,
+        ge=None,
+        gt=None,
+        le=None,
+        lt=None,
+        multiple_of=None,
         static=False,
         env=None,
         transient=None,
     ):
-        self.minval = minval
-        self.maxval = maxval
+        self.ge = ge
+        self.gt = gt
+        self.le = le
+        self.lt = lt
+        self.multiple_of = multiple_of
         super().__init__(
             default_value,
             doc,
@@ -529,13 +585,17 @@ class Float(ConfigField):
     def validate(self, value):  # noqa: D102
         if not isinstance(value, (float, int)) or isinstance(value, bool):
             raise TypeError(f"Expected a float, got {type(value).__name__!r}")
-        if self.minval is not None and value < self.minval:
+        if self.gt is not None and not (value > self.gt):
+            raise ValueError(f"Expected value > {self.gt!r}, got {value!r}")
+        if self.ge is not None and not (value >= self.ge):
+            raise ValueError(f"Expected value >= {self.ge!r}, got {value!r}")
+        if self.lt is not None and not (value < self.lt):
+            raise ValueError(f"Expected value < {self.lt!r}, got {value!r}")
+        if self.le is not None and not (value <= self.le):
+            raise ValueError(f"Expected value <= {self.le!r}, got {value!r}")
+        if self.multiple_of is not None and value % self.multiple_of != 0:
             raise ValueError(
-                f"Expected value >= {self.minval!r}, got {value!r}"
-            )
-        if self.maxval is not None and value > self.maxval:
-            raise ValueError(
-                f"Expected value <= {self.maxval!r}, got {value!r}"
+                f"Expected multiple of {self.multiple_of!r}, got {value!r}"
             )
 
 
@@ -827,9 +887,9 @@ class List(ConfigField):
     element_type : `type` or `None`, optional
         If provided, every element of the list must be an instance of
         this type. Default is `None` (no element-level type check).
-    minlen : `int` or `None`, optional
+    min_length : `int` or `None`, optional
         Minimum number of elements. Default is `None`.
-    maxlen : `int` or `None`, optional
+    max_length : `int` or `None`, optional
         Maximum number of elements. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
@@ -841,7 +901,7 @@ class List(ConfigField):
         If the value is not a `list`, or contains elements of the wrong
         type when ``element_type`` is set.
     ValueError
-        If the list length is outside [``minlen``, ``maxlen``].
+        If the list length is outside [``min_length``, ``max_length``].
     """
 
     def __init__(
@@ -849,15 +909,15 @@ class List(ConfigField):
         default_value,
         doc,
         element_type=None,
-        minlen=None,
-        maxlen=None,
+        min_length=None,
+        max_length=None,
         static=False,
         env=None,
         transient=None,
     ):
         self.element_type = element_type
-        self.minlen = minlen
-        self.maxlen = maxlen
+        self.min_length = min_length
+        self.max_length = max_length
         super().__init__(
             default_value,
             doc,
@@ -918,13 +978,15 @@ class List(ConfigField):
     def validate(self, value):  # noqa: D102
         if not isinstance(value, list):
             raise TypeError(f"Expected a list, got {type(value).__name__!r}")
-        if self.minlen is not None and len(value) < self.minlen:
+        if self.min_length is not None and len(value) < self.min_length:
             raise ValueError(
-                f"Expected at least {self.minlen} elements, got {len(value)}"
+                f"Expected at least {self.min_length} elements, "
+                "got {len(value)} instead."
             )
-        if self.maxlen is not None and len(value) > self.maxlen:
+        if self.max_length is not None and len(value) > self.max_length:
             raise ValueError(
-                f"Expected at most {self.maxlen} elements, got {len(value)}"
+                f"Expected at most {self.max_length} elements, "
+                "got {len(value)} instead"
             )
         if self.element_type is not None:
             bad = [el for el in value if not isinstance(el, self.element_type)]
@@ -948,6 +1010,10 @@ class Dict(ConfigField):
         Default dict value or lazy factory returning a `dict`.
     doc : `str`
         Documentation.
+    min_length : `int` or `None`, optional
+        Minimum number of keys. Default is `None`.
+    max_length : `int` or `None`, optional
+        Maximum number of keys. Default is `None`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -956,7 +1022,29 @@ class Dict(ConfigField):
     ------
     TypeError
         If the value is not a `dict`.
+    ValueError
+        If the number of keys violates ``min_length`` or ``max_length``.
     """
+
+    def __init__(
+        self,
+        default_value,
+        doc,
+        min_length=None,
+        max_length=None,
+        static=False,
+        env=None,
+        transient=None,
+    ):
+        self.min_length = min_length
+        self.max_length = max_length
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def from_string(self, s):  # noqa: D102
         try:
@@ -972,6 +1060,14 @@ class Dict(ConfigField):
     def validate(self, value):  # noqa: D102
         if not isinstance(value, dict):
             raise TypeError(f"Expected a dict, got {type(value).__name__!r}")
+        if self.min_length is not None and len(value) < self.min_length:
+            raise ValueError(
+                f"Expected at least {self.min_length} keys, got {len(value)}"
+            )
+        if self.max_length is not None and len(value) > self.max_length:
+            raise ValueError(
+                f"Expected at most {self.max_length} keys, got {len(value)}"
+            )
 
     def to_argparse_kwargs(self, name, prefix=""):  # noqa: D102
         kwargs = super().to_argparse_kwargs(name, prefix)
@@ -1103,6 +1199,9 @@ class DateTime(ConfigField):
         `datetime.datetime`.
     doc : `str`
         Documentation.
+    tz_aware : `bool`, optional
+        If `True`, the value must have a non-`None` ``tzinfo``. Default
+        is `False`.
     static : `bool`, optional
         If `True`, the value is frozen at class-definition time.
         Default is `False`.
@@ -1111,7 +1210,27 @@ class DateTime(ConfigField):
     ------
     TypeError
         If the value is not a `datetime.datetime`.
+    ValueError
+        If ``tz_aware=True`` and the datetime has no timezone info.
     """
+
+    def __init__(
+        self,
+        default_value,
+        doc,
+        tz_aware=False,
+        static=False,
+        env=None,
+        transient=None,
+    ):
+        self.tz_aware = tz_aware
+        super().__init__(
+            default_value,
+            doc,
+            static=static,
+            env=env,
+            transient=transient,
+        )
 
     def normalize(self, value):  # noqa: D102
         if isinstance(value, str):
@@ -1122,6 +1241,10 @@ class DateTime(ConfigField):
         if not isinstance(value, datetime.datetime):
             raise TypeError(
                 f"Expected a datetime.datetime, got {type(value).__name__!r}"
+            )
+        if self.tz_aware and value.tzinfo is None:
+            raise ValueError(
+                f"Expected a timezone-aware datetime, got {value!r} instead."
             )
 
     def serialize(self, value):  # noqa: D102

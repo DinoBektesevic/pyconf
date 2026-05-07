@@ -118,16 +118,16 @@ class TestString:
         with pytest.raises(TypeError):
             C().f = 123
 
-    def test_minsize(self):
+    def test_min_length(self):
         class C(Config):
-            f = String("ab", "doc", minsize=2)
+            f = String("ab", "doc", min_length=2)
 
         with pytest.raises(ValueError):
             C().f = "x"
 
-    def test_maxsize(self):
+    def test_max_length(self):
         class C(Config):
-            f = String("hi", "doc", maxsize=3)
+            f = String("hi", "doc", max_length=3)
 
         with pytest.raises(ValueError):
             C().f = "toolong"
@@ -161,16 +161,16 @@ class TestInt:
         with pytest.raises(TypeError):
             C().f = 1.5
 
-    def test_minval(self):
+    def test_ge(self):
         class C(Config):
-            f = Int(1, "doc", minval=0)
+            f = Int(1, "doc", ge=0)
 
         with pytest.raises(ValueError):
             C().f = -1
 
-    def test_maxval(self):
+    def test_le(self):
         class C(Config):
-            f = Int(1, "doc", maxval=10)
+            f = Int(1, "doc", le=10)
 
         with pytest.raises(ValueError):
             C().f = 11
@@ -210,9 +210,9 @@ class TestFloat:
         with pytest.raises(TypeError):
             C().f = "1.0"
 
-    def test_minval(self):
+    def test_ge(self):
         class C(Config):
-            f = Float(1.0, "doc", minval=0.0)
+            f = Float(1.0, "doc", ge=0.0)
 
         with pytest.raises(ValueError):
             C().f = -0.1
@@ -487,16 +487,16 @@ class TestList:
         with pytest.raises(TypeError):
             C().f = [1, "two", 3]
 
-    def test_minlen(self):
+    def test_min_length(self):
         class C(Config):
-            f = List([1, 2], "doc", minlen=2)
+            f = List([1, 2], "doc", min_length=2)
 
         with pytest.raises(ValueError):
             C().f = [1]
 
-    def test_maxlen(self):
+    def test_max_length(self):
         class C(Config):
-            f = List([1], "doc", maxlen=2)
+            f = List([1], "doc", max_length=2)
 
         with pytest.raises(ValueError):
             C().f = [1, 2, 3]

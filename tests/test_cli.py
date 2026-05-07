@@ -45,7 +45,7 @@ def parse(cfg_cls, argv):
 class FlatConfig(Config):
     confid = "flat"
     n_sigma = Float(5.0, "Detection threshold")
-    iterations = Int(100, "Number of iterations", minval=1)
+    iterations = Int(100, "Number of iterations", ge=1)
     label = String("run01", "Run label")
     mode = Options(("fast", "balanced", "thorough"), "Processing mode")
     verbose = Bool(False, "Enable verbose output")

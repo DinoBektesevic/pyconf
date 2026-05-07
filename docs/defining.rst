@@ -13,19 +13,33 @@ constraints, and documentation in one place::
         """Configuration for the main processing pipeline."""
         confid = "processing"
 
-        iterations: int = Field(100, "Number of iterations", minval=1)
-        threshold: float = Field(0.5, "Acceptance threshold", minval=0.0, maxval=1.0)
+        iterations: int = Field(100, "Number of iterations", ge=1)
+        threshold: float = Field(0.5, "Acceptance threshold", ge=0.0, le=1.0)
         label: str = Field("run_01", "Human-readable run label")
         mode: Literal["fast", "balanced", "thorough"] = Field("fast", "Processing mode")
         verbose: bool = Field(False, "Enable verbose logging")
 
-``print(cfg)`` renders the full schema as a table - no extra code required::
+.. testsetup::
 
-    cfg = ProcessingConfig()
-    print(cfg)
+    from cfx import Config, Field
+    from typing import Literal
 
-.. code-block:: text
+    class ProcessingConfig(Config):
+        """Configuration for the main processing pipeline."""
+        confid = "processing"
 
+        iterations: int = Field(100, "Number of iterations", ge=1)
+        threshold: float = Field(0.5, "Acceptance threshold", ge=0.0, le=1.0)
+        label: str = Field("run_01", "Human-readable run label")
+        mode: Literal["fast", "balanced", "thorough"] = Field("fast", "Processing mode")
+        verbose: bool = Field(False, "Enable verbose logging")
+
+``print(cfg)`` renders the full schema as a table - no extra code required:
+
+.. doctest::
+
+    >>> cfg = ProcessingConfig()
+    >>> print(cfg)  # doctest: +NORMALIZE_WHITESPACE
     ProcessingConfig: Configuration for the main processing pipeline.
     Config           | Key        | Value  | Description
     -----------------+------------+--------+-------------------------
@@ -39,14 +53,27 @@ In a Jupyter notebook the same table is rendered as HTML automatically via
 the standard ``_repr_html_`` protocol.
 
 Dot-access and dict-style access are interchangeable.  Both route through
-the same field validation::
+the same field validation:
 
-    cfg.iterations = 200  # dot-access
-    cfg["mode"] = "thorough"  # dict-style
+.. doctest::
 
-    cfg.threshold = 1.5  # ValueError: Expected value <= 1.0, got 1.5
-    cfg["mode"] = "turbo"  # ValueError: Expected 'turbo' to be one of ...
-    cfg["no_such"] = 1  # KeyError: 'no_such'
+    >>> cfg.iterations = 200
+    >>> cfg["mode"] = "thorough"
+
+    >>> cfg.threshold = 1.5
+    Traceback (most recent call last):
+        ...
+    ValueError: Expected value <= 1.0, got 1.5
+
+    >>> cfg["mode"] = "turbo"
+    Traceback (most recent call last):
+        ...
+    ValueError: Expected 'turbo' to be one of ('fast', 'balanced', 'thorough')
+
+    >>> cfg["no_such"] = 1
+    Traceback (most recent call last):
+        ...
+    KeyError: 'no_such'
 
 See :doc:`fields` for the full annotation → field type mapping and
 :doc:`field-modifiers` for callable defaults, static fields, and environment
@@ -69,7 +96,7 @@ change defaults.  Fields from the full MRO are collected automatically::
         confid = "detailed"
 
         output_dir: str = Field("./results", "Directory for output files")
-        max_rows: int = Field(10_000, "Maximum rows per output file", minval=1)
+        max_rows: int = Field(10_000, "Maximum rows per output file", ge=1)
 
     cfg = DetailedConfig()
     cfg.iterations   # 100 - inherited from ProcessingConfig

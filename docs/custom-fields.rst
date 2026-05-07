@@ -33,13 +33,40 @@ Import the base class from ``cfx.types``::
     class SurveyConfig(Config):
         heading = Angle(0.0, "Survey heading in degrees")
         bearing = Angle(45.0, "Bearing to target in degrees")
-        radius: float = Field(10.0, "Search radius in meters", minval=0.0)
+        radius: float = Field(10.0, "Search radius in meters", ge=0.0)
 
-    cfg = SurveyConfig()
-    cfg.heading = 370.0
-    cfg.heading             # 10.0  - normalized to [0, 360)
-    cfg.heading = -30.0
-    cfg.heading             # 330.0 - wrapped around
+.. testsetup::
+
+    from cfx import Config, Field
+    from cfx.types import ConfigField
+
+    class Angle(ConfigField):
+        """An angle in degrees, stored normalized to [0, 360)."""
+
+        def normalize(self, value):
+            """Coerce to float and wrap to [0, 360)."""
+            return float(value) % 360.0
+
+        def validate(self, value):
+            if not isinstance(value, float):
+                raise TypeError(
+                    f"Angle requires a float, got {type(value).__name__!r}"
+                )
+
+    class SurveyConfig(Config):
+        heading = Angle(0.0, "Survey heading in degrees")
+        bearing = Angle(45.0, "Bearing to target in degrees")
+        radius: float = Field(10.0, "Search radius in meters", ge=0.0)
+
+.. doctest::
+
+    >>> cfg = SurveyConfig()
+    >>> cfg.heading = 370.0
+    >>> cfg.heading
+    10.0
+    >>> cfg.heading = -30.0
+    >>> cfg.heading
+    330.0
 
 Explicit field types and ``Field()``-declared fields can coexist freely on
 the same class.
@@ -60,11 +87,14 @@ the same two-step pipeline:
 Both methods are called in ``ConfigField.__init__`` on the default, so
 ``defaultval`` is always stored in its canonical (normalized) form::
 
-    class SurveyConfig(Config):
-        heading = Angle(370.0, "Heading")
+.. doctest::
 
-    SurveyConfig().heading                   # 10.0 — normalized at access
-    type(SurveyConfig()).heading.defaultval  # 10.0 — also normalized
+    >>> class NormConfig(Config):
+    ...     heading = Angle(370.0, "Heading")
+    >>> NormConfig().heading
+    10.0
+    >>> type(NormConfig())._fields["heading"].defaultval
+    10.0
 
 Override only the methods you need.  The base implementations are no-ops —
 ``normalize`` returns the value unchanged, ``validate`` accepts anything.

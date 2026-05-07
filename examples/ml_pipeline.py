@@ -28,7 +28,7 @@ class PreprocessingConfig(Config):
         False, "Drop rows beyond outlier_threshold sigma"
     )
     outlier_threshold: float = Field(
-        3.0, "Outlier threshold (sigma)", minval=1.0
+        3.0, "Outlier threshold (sigma)", ge=1.0
     )
 
 
@@ -39,20 +39,20 @@ class ModelConfig(Config):
         "random_forest",
         "Model family",
     )
-    n_estimators: int = Field(100, "Number of estimators", minval=1)
-    max_depth: int = Field(10, "Max tree depth", minval=1)
+    n_estimators: int = Field(100, "Number of estimators", ge=1)
+    max_depth: int = Field(10, "Max tree depth", ge=1)
     learning_rate: float = Field(
-        0.1, "Learning rate", minval=0.0001, maxval=1.0
+        0.1, "Learning rate", ge=0.0001, le=1.0
     )
 
 
 class TrainingConfig(Config):
     confid = "training"
 
-    epochs: int = Field(10, "Training epochs", minval=1)
-    batch_size: int = Field(32, "Batch size", minval=1)
+    epochs: int = Field(10, "Training epochs", ge=1)
+    batch_size: int = Field(32, "Batch size", ge=1)
     validation_split: float = Field(
-        0.2, "Validation split", minval=0.0, maxval=1.0
+        0.2, "Validation split", ge=0.0, le=1.0
     )
 
 

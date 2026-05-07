@@ -140,7 +140,7 @@ class TestReset:
 
     def test_reset_with_value_sets_and_validates(self):
         class C(Config):
-            x = Float(1.0, "doc", maxval=10.0)
+            x = Float(1.0, "doc", le=10.0)
 
         c = C()
         descriptor = type(c)._fields["x"]
@@ -150,7 +150,7 @@ class TestReset:
 
     def test_reset_with_value_rejects_invalid(self):
         class C(Config):
-            x = Float(1.0, "doc", maxval=10.0)
+            x = Float(1.0, "doc", le=10.0)
 
         c = C()
         descriptor = type(c)._fields["x"]

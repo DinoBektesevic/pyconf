@@ -38,8 +38,8 @@ from cfx import (
 class BaseConfig(Config):
     confid = "base"
     field1 = String("a", "A string field")
-    field2 = Float(1.0, "A float field", minval=0.0)
-    field3 = Int(10, "An integer field", minval=0)
+    field2 = Float(1.0, "A float field", ge=0.0)
+    field3 = Int(10, "An integer field", ge=0)
     field4 = Options(("opt_a", "opt_b", "opt_c"), "An options field")
     field5 = Bool(False, "A boolean flag")
     field6 = Scalar(0.5, "A scalar field")

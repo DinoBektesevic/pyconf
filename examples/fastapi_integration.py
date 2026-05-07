@@ -21,10 +21,10 @@ class DatabaseConfig(Config):
 
     host: str = Field("localhost", "Database host", env="DB_HOST")
     port: int = Field(
-        5432, "Database port", minval=1, maxval=65535, env="DB_PORT"
+        5432, "Database port", ge=1, le=65535, env="DB_PORT"
     )
     name: str = Field("app", "Database name", env="DB_NAME")
-    pool_size: int = Field(10, "Connection pool size", minval=1)
+    pool_size: int = Field(10, "Connection pool size", ge=1)
 
 
 class AppSettings(Config):

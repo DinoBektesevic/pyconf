@@ -14,14 +14,39 @@ Views are useful when:
   contexts;
 - two separate config fields must always stay in sync.
 
+.. testsetup::
+
+    from cfx import Config, Float, Int, String, Bool, ConfigView, Alias, AliasedView, FlatView, Mirror
+
+    class ProcessingConfig(Config):
+        confid = "processing"
+        iterations = Int(100, "Number of iterations", ge=1)
+        threshold = Float(0.5, "Acceptance threshold", ge=0.0, le=1.0)
+        verbose = Bool(False, "Enable verbose logging")
+
+    class FormatConfig(Config):
+        confid = "format"
+        precision = Int(6, "Decimal places in numeric output")
+        encoding = String("utf-8", "Output file encoding")
+
+    class PipelineConfig(Config, components=[ProcessingConfig, FormatConfig]):
+        confid = "pipeline"
+        run_id = String("run_01", "Run identifier")
+        dry_run = Bool(False, "Validate only; skip writes")
+
+    class RunSummary(ConfigView):
+        n_iter   = Alias(PipelineConfig.processing.iterations)
+        decimals = Alias(PipelineConfig.processing.threshold)
+        label    = Alias(PipelineConfig.run_id)
+
 The examples on this page use these shared config classes::
 
     from cfx import Config, Float, Int, String, Bool
 
     class ProcessingConfig(Config):
         confid = "processing"
-        iterations = Int(100, "Number of iterations", minval=1)
-        threshold = Float(0.5, "Acceptance threshold", minval=0.0, maxval=1.0)
+        iterations = Int(100, "Number of iterations", ge=1)
+        threshold = Float(0.5, "Acceptance threshold", ge=0.0, le=1.0)
         verbose = Bool(False, "Enable verbose logging")
 
     class FormatConfig(Config):
@@ -53,15 +78,18 @@ Bind a view to an existing config instance at construction.  All reads and
 writes delegate through to the underlying config — the view carries no data
 of its own::
 
-    cfg = PipelineConfig()
-    cfg.processing.iterations = 250
+.. doctest::
 
-    v = RunSummary(cfg)
-    v.n_iter    # 250 - reads cfg.processing.iterations
-    v.decimals  # 0.5 - reads cfg.processing.threshold
-
-    v.n_iter = 500
-    cfg.processing.iterations  # 500 - write went through
+    >>> cfg = PipelineConfig()
+    >>> cfg.processing.iterations = 250
+    >>> v = RunSummary(cfg)
+    >>> v.n_iter
+    250
+    >>> v.decimals
+    0.5
+    >>> v.n_iter = 500
+    >>> cfg.processing.iterations
+    500
 
 The ``Alias`` argument is a :class:`~cfx.refs.FieldRef` obtained by
 class-level attribute access on a :class:`~cfx.Config`.  Plain dotpath
@@ -86,7 +114,10 @@ A view can span multiple sub-configs by binding to a common parent::
 :meth:`~cfx.ConfigView.to_dict` returns the aliased fields and their current
 values::
 
-    v.to_dict()   # {'n_iter': 500, 'decimals': 0.5, 'precision': 6}
+.. doctest::
+
+    >>> v.to_dict()
+    {'n_iter': 500, 'decimals': 0.5, 'label': 'run_01'}
 
 :meth:`~cfx.ConfigView.from_dict` applies values from a dict through the
 view's aliases and returns a bound view::
@@ -118,12 +149,18 @@ arguments::
     class JobView(AliasedView, components=[ProcessingConfig, FormatConfig]):
         pass
 
-    v = JobView()
-    v.processing_iterations  # 100 - alias generated as "{confid}_{field}"
-    v.format_precision       # 6
+.. doctest::
 
-    v.processing_iterations = 300
-    v.processing.iterations  # 300 - write went through to the component
+    >>> class JobView(AliasedView, components=[ProcessingConfig, FormatConfig]):
+    ...     pass
+    >>> v = JobView()
+    >>> v.processing_iterations
+    100
+    >>> v.format_precision
+    6
+    >>> v.processing_iterations = 300
+    >>> v.processing.iterations
+    300
 
 By default each alias is prefixed with the component's ``confid``, so fields
 from different components never conflict.

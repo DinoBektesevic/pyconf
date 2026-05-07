@@ -64,7 +64,7 @@ class Config:
     >>> from cfx import Config, Field
     >>> class BaseConfig(Config):
     ...     confid = "base"
-    ...     n: int = Field(5, "An integer field", minval=0)
+    ...     n: int = Field(5, "An integer field", ge=0)
     ...     label: str = Field("default", "A label")
     >>> cfg = BaseConfig()
     >>> cfg.n
@@ -182,8 +182,8 @@ class Config:
         --------
         >>> from cfx import Config, Field
         >>> class BandConfig(Config):
-        ...     low: float = Field(1.0, "Lower bound", minval=0.0)
-        ...     high: float = Field(2.0, "Upper bound", minval=0.0)
+        ...     low: float = Field(1.0, "Lower bound", ge=0.0)
+        ...     high: float = Field(2.0, "Upper bound", ge=0.0)
         ...
         ...     def validate(self):
         ...         if self.high <= self.low:

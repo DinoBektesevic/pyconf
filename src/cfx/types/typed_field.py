@@ -4,7 +4,7 @@
 field type inferred automatically from the type annotation::
 
     class SearchConfig(Config):
-        n_sigma: float = Field(5.0, "Detection threshold", minval=0.0)
+        n_sigma: float = Field(5.0, "Detection threshold", ge=0.0)
         method: Literal["DBSCAN", "RANSAC"] = Field("DBSCAN", "Algorithm")
 
 For custom field types or advanced validation, import explicit types from
@@ -13,7 +13,7 @@ For custom field types or advanced validation, import explicit types from
     from cfx.types import Float, Options
 
     class SearchConfig(Config):
-        n_sigma = Float(5.0, "Detection threshold", minval=0.0)
+        n_sigma = Float(5.0, "Detection threshold", ge=0.0)
         method  = Options(("DBSCAN", "RANSAC"), "Algorithm")
 """
 
@@ -69,7 +69,7 @@ def Field(default, doc="", **kwargs):
         from cfx import Config, Field
 
         class SearchConfig(Config):
-            n_sigma: float = Field(5.0, "Detection threshold", minval=0.0)
+            n_sigma: float = Field(5.0, "Detection threshold", ge=0.0)
             method: Literal["DBSCAN", "RANSAC"] = Field("DBSCAN", "Algorithm")
             verbose: bool = Field(False, "Enable verbose output")
 
@@ -86,8 +86,8 @@ def Field(default, doc="", **kwargs):
     doc : `str`, optional
         Human-readable description shown in display tables.
     **kwargs
-        Any keyword argument accepted by the resolved field type
-        (e.g. ``minval=``, ``maxval=``, ``env=``, ``static=``, ``transient=``).
+        Any keyword argument accepted by the resolved field type (e.g. ``ge=``,
+    ``le=``, ``gt=``, ``lt=``, ``env=``, ``static=``, ``transient=``).
 
     Returns
     -------
