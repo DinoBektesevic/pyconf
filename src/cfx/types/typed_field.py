@@ -73,6 +73,14 @@ def Field(default, doc="", **kwargs):
             method: Literal["DBSCAN", "RANSAC"] = Field("DBSCAN", "Algorithm")
             verbose: bool = Field(False, "Enable verbose output")
 
+    ``choices=`` is an alternative to ``Literal[...]`` annotations — useful
+    when the allowed values are a runtime constant rather than a literal::
+
+        ALGORITHMS = ("DBSCAN", "RANSAC", "IsolationForest")
+
+        class SearchConfig(Config):
+            method: str = Field("DBSCAN", "Algorithm", choices=ALGORITHMS)
+
     Callable defaults are supported for computed fields::
 
         class DerivedConfig(Config):
@@ -85,6 +93,11 @@ def Field(default, doc="", **kwargs):
         Default value or lazy factory accepting the owning instance.
     doc : `str`, optional
         Human-readable description shown in display tables.
+    choices : `tuple`, optional
+        Allowed values.  Resolves to :class:`~cfx.Options` (or
+        :class:`~cfx.MultiOptions` when the annotation is ``set``).
+        Unlike ``Literal[...]``, the choices are not visible to static type
+        checkers — invalid assignments are caught at runtime only.
     **kwargs
         Any keyword argument accepted by the resolved field type (e.g. ``ge=``,
     ``le=``, ``gt=``, ``lt=``, ``env=``, ``static=``, ``transient=``).
@@ -133,6 +146,15 @@ def resolve_field_spec(name, spec, annotation):
         origin = t.get_origin(annotation)
         args = t.get_args(annotation)
     kw = {"static": static, **spec.kwargs} if static else dict(spec.kwargs)
+
+    # choices= Options / MultiOptions (annotation stays as plain str/set/etc.)
+    choices = kw.pop("choices", None)
+    if choices is not None:
+        if origin is set or annotation is set:
+            return MultiOptions(
+                choices, spec.doc, default_value=spec.default, **kw
+            )
+        return Options(choices, spec.doc, default_value=spec.default, **kw)
 
     # Literal[...] → Options  (Options takes options first, not default)
     if origin is t.Literal:

@@ -112,6 +112,59 @@ def test_union_int_float_inferred():
 
 
 ###############################################################################
+# choices= shorthand
+###############################################################################
+
+ALGOS = ("DBSCAN", "RANSAC", "IsolationForest")
+
+
+class WithChoices(Config):
+    confid = "choices"
+    method: str = Field("DBSCAN", "Algorithm", choices=ALGOS)
+    tags: set = Field(set(), "Tag set", choices=("fast", "slow", "exact"))
+
+
+def test_choices_str_resolves_to_options():
+    assert isinstance(_field_type(WithChoices, "method"), Options)
+
+
+def test_choices_set_resolves_to_multioptions():
+    assert isinstance(_field_type(WithChoices, "tags"), MultiOptions)
+
+
+def test_choices_default_value():
+    cfg = WithChoices()
+    assert cfg.method == "DBSCAN"
+
+
+def test_choices_valid_assignment():
+    cfg = WithChoices()
+    cfg.method = "RANSAC"
+    assert cfg.method == "RANSAC"
+
+
+def test_choices_invalid_assignment():
+    cfg = WithChoices()
+    with pytest.raises(ValueError):
+        cfg.method = "SVM"
+
+
+def test_choices_runtime_tuple():
+    """choices= accepts a runtime-computed tuple, unlike Literal[...]."""
+
+    DYNAMIC = ("a", "b", "c")
+
+    class Dynamic(Config):
+        confid = "dynamic"
+        x: str = Field("a", "field", choices=DYNAMIC)
+
+    cfg = Dynamic()
+    assert cfg.x == "a"
+    with pytest.raises(ValueError):
+        cfg.x = "d"
+
+
+###############################################################################
 # Extra kwargs pass through
 ###############################################################################
 

@@ -157,6 +157,30 @@ time.  Any constraint keyword accepted by the underlying type can be passed
 directly to ``Field()`` (e.g. ``ge=``, ``le=``, ``env=``,
 ``static=``).
 
+.. rubric:: choices= shorthand
+
+``choices=`` is an alternative to ``Literal[...]`` for declaring an
+:class:`~cfx.Options` field when the allowed values are a runtime constant
+rather than a literal::
+
+    ALGORITHMS = ("DBSCAN", "RANSAC", "IsolationForest")
+
+    class SearchConfig(Config):
+        method: str = Field("DBSCAN", "Algorithm", choices=ALGORITHMS)
+
+Pass a ``set`` annotation to get :class:`~cfx.MultiOptions` instead::
+
+    class SearchConfig(Config):
+        active: set = Field(set(), "Active algorithms", choices=ALGORITHMS)
+
+.. note::
+
+   ``choices=`` does not propagate the allowed values to the type annotation —
+   the annotation stays ``str`` (or ``set``), so static type checkers see a
+   plain string field rather than a constrained literal.  Invalid assignments
+   are caught at runtime only.  When static analysis of option membership
+   matters, use a ``Literal[...]`` annotation instead.
+
 Static and runtime validation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
